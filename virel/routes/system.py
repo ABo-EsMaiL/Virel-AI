@@ -6,7 +6,7 @@ import time
 from fastapi import APIRouter, Depends
 
 from ..auth import verify_api_key
-from ..config import RUNTIME_DIR, SESSION_DATA_PATH, HEADLESS, DEFAULT_MODEL, THINKING_MODE, CLEAR_CHAT_ON_REQUEST, PORT, RATE_LIMIT
+from ..config import RUNTIME_DIR, SESSION_DATA_PATH, HEADLESS, DEFAULT_MODEL, THINKING_MODE, PORT, RATE_LIMIT
 from ..runtime import browser_manager
 
 router = APIRouter()
@@ -56,7 +56,7 @@ async def health_check():
         "thinking_verified": getattr(browser_manager, "thinking_verified", False),
         "google_search_enabled": getattr(browser_manager, "google_search_enabled", False),
         "search_verified": getattr(browser_manager, "search_verified", False),
-        "clear_chat_on_request": CLEAR_CHAT_ON_REQUEST,
+        "clear_chat_on_request": True,
         "port": PORT,
         "rate_limit": RATE_LIMIT
     }

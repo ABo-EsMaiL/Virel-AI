@@ -10,7 +10,7 @@ from contextlib import aclosing
 from typing import AsyncGenerator, List, Optional, Union
 from playwright.async_api import async_playwright, BrowserContext, Page
 
-from .config import (RUNTIME_DIR, CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, ENABLE_SEARCH_GROUNDING, CLEAR_CHAT_ON_REQUEST, TARGET_URL)
+from .config import (RUNTIME_DIR, CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, ENABLE_SEARCH_GROUNDING, TARGET_URL)
 from .dom import FETCH_RESPONSE_STATE
 from .usage import BrowserUsageObserver
 
@@ -358,41 +358,26 @@ class WebHookBrowserManager:
             pass
         logger.info("Browser stopped.")
 
-    async def reset_chat_if_needed(self, model_name: Optional[str] = None):
-        """Ensures the chat interface is clean for a new request."""
+    async def reset_chat_if_needed(self, model_name: Optional[str] = None) -> bool:
+        """Never replay caller history into a retained browser conversation."""
         if not self.page or self.page.is_closed() or self.is_shutting_down:
-            return
-        t_reset_start = time.time()
+            return False
         try:
-            await self.page.keyboard.press("Escape")
-            await asyncio.sleep(0.1)
-
-            reset_done = False
-            try:
-                new_btn = self.page.locator('button[aria-label*="New prompt" i], button[aria-label*="New chat" i], a[aria-label*="New prompt" i]').first
-                if await new_btn.is_visible():
-                    await new_btn.click(timeout=1500)
-                    await asyncio.sleep(0.5)
-                    ta = self.page.locator('textarea[placeholder*="Type something" i], textarea[aria-label*="prompt" i], ms-autosize-textarea textarea').first
-                    if await ta.is_visible():
-                        reset_done = True
-                        logger.info("Fast chat reset succeeded via UI button.")
-            except Exception as e:
-                logger.debug(f"Fast reset button click skipped/failed ({e}). Falling back to navigation.")
-                reset_done = False
-
-            if not reset_done:
-                logger.info("Starting fresh chat session (navigating to new chat)...")
-                await self.page.goto(TARGET_URL, timeout=30000, wait_until="domcontentloaded")
-                await asyncio.sleep(0.8)
-
+            await self.page.goto(TARGET_URL, timeout=30000, wait_until="domcontentloaded")
+            prompt = self.page.locator('.prompt-box-container textarea, textarea[formcontrolname="promptText"], textarea[aria-label*="prompt" i], textarea[placeholder*="Type" i]').last
+            await prompt.wait_for(state="visible", timeout=8000)
+            turns = self.page.locator('ms-chat-turn, .chat-turn-container, .chat-turn, [data-turn-role]')
+            if await turns.count() or (await prompt.input_value()).strip():
+                logger.warning("Fresh-chat verification failed; refusing to reuse browser context.")
+                return False
             await self.page.keyboard.press("Escape")
             await self.ensure_model(model_name)
             await self.ensure_thinking_mode()
             await self.ensure_tools(ENABLE_SEARCH_GROUNDING)
-            logger.info(f"[TIMING-PREEXEC] Chat reset & setup took {time.time() - t_reset_start:.2f}s (reset_done={reset_done})")
-        except Exception as e:
-            logger.warning(f"Error resetting chat: {e}")
+            return True
+        except Exception:
+            logger.warning("Fresh-chat navigation or prompt verification failed.")
+            return False
 
     # Lifecycle State Constants
     STATE_NO_RESPONSE_STARTED = "NO_RESPONSE_STARTED"
@@ -434,26 +419,9 @@ class WebHookBrowserManager:
             yield {"error": "[Error: Browser page not initialized or server is shutting down]"}
             return
 
-        # 0. Check if previous turns have a fatal error ('An internal error has occurred' / 'permission denied')
-        # If an error turn exists in the conversation, Google AI Studio rejects all subsequent turns with 403.
-        has_fatal_error = False
-        try:
-            has_fatal_error = await self.page.evaluate('''() => {
-                const body = (document.body.innerText || document.body.textContent || '');
-                return body.includes('An internal error has occurred') ||
-                       body.includes('Failed to generate content') ||
-                       body.includes('permission denied');
-            }''')
-        except Exception:
-            pass
-
-        if CLEAR_CHAT_ON_REQUEST or has_fatal_error:
-            if has_fatal_error:
-                logger.warning("Detected error in previous chat turn. Resetting to fresh chat to prevent 403 Forbidden...")
-            await self.reset_chat_if_needed(model_name=model_name)
-        else:
-            await self.ensure_model(model_name)
-            await self.ensure_thinking_mode()
+        if not await self.reset_chat_if_needed(model_name=model_name):
+            yield {"error": "[Error: RESET_FAILED - could not establish an empty chat]"}
+            return
 
         if not self.model_verified:
             yield {"error": "[Error: MODEL_UNAVAILABLE - requested model is not verified]"}
@@ -760,34 +728,6 @@ class WebHookBrowserManager:
             trimmed_text = prev_text.strip()
             if not trimmed_text:
                 validation_error = "EMPTY_RESPONSE: Model finished generating but no text was captured from DOM."
-            else:
-                # If prompt expected JSON / structured data
-                expects_json = ('"items"' in prompt or '"cases"' in prompt or 'json' in prompt.lower() or '{' in prompt)
-                if expects_json:
-                    is_valid_json = False
-                    try:
-                        json.loads(trimmed_text)
-                        is_valid_json = True
-                    except Exception:
-                        try:
-                            fenced = re.sub(r"^```(?:json)?\s*", "", trimmed_text, flags=re.MULTILINE)
-                            fenced = re.sub(r"```\s*$", "", fenced, flags=re.MULTILINE).strip()
-                            json.loads(fenced)
-                            is_valid_json = True
-                        except Exception:
-                            m = re.search(r'\{.*\}', trimmed_text, re.DOTALL) or re.search(r'\[.*\]', trimmed_text, re.DOTALL)
-                            if m:
-                                try:
-                                    json.loads(m.group(0))
-                                    is_valid_json = True
-                                except Exception:
-                                    pass
-
-                    if not is_valid_json:
-                        if not (trimmed_text.endswith('}') or trimmed_text.endswith(']')):
-                            validation_error = f"STREAM_TRUNCATED: Response ended abruptly without closing JSON structure (chars: {len(prev_text)})."
-                        else:
-                            validation_error = f"INVALID_JSON_RESPONSE: Response completed but could not be parsed as valid JSON (chars: {len(prev_text)})."
 
         if validation_error:
             logger.error(f"[{case_count} cases] [CHECK 2 VALIDATION FAILED] {validation_error}")

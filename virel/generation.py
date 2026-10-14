@@ -36,6 +36,8 @@ def validate_options(body):
 def _browser_error(text):
     if "TIMEOUT" in text or "NO_RESPONSE_STARTED" in text:
         return GatewayError(504, "AI Studio generation timed out.", "upstream_timeout")
+    if "RESET_FAILED" in text:
+        return GatewayError(503, "AI Studio could not start a verified fresh chat.", "browser_not_ready")
     if "MODEL_UNAVAILABLE" in text:
         return GatewayError(503, "The requested UI model could not be verified.", "model_unavailable")
     if "not initialized" in text or "Could not locate chat prompt" in text:

@@ -11,9 +11,7 @@ from ..errors import GatewayError, provider_error
 from ..generation import checked_stream, require_ready, validate_options, usage_headers
 from ..config import DEFAULT_MODEL, RATE_LIMIT
 from ..runtime import browser_manager, limiter, _get_semaphore
-from ..config import CLEAR_CHAT_ON_REQUEST
-from ..schemas import ChatMessage
-from ..messages import format_messages_to_prompt
+from ..messages import format_messages_to_prompt, responses_messages
 
 logger = logging.getLogger("virel.webhook")
 router = APIRouter()
@@ -41,73 +39,11 @@ async def responses_endpoint(request: Request):
     if body.get("prompt"):
         raise GatewayError(400, "Reusable prompt templates are not supported yet.", "unsupported_capability")
     require_ready()
-    for item in body.get("input", []) if isinstance(body.get("input"), list) else []:
-        if isinstance(item, dict):
-            if item.get("type", "message") != "message":
-                raise GatewayError(400, "Only text message input is supported.", "unsupported_capability")
-            content = item.get("content", [])
-            if not isinstance(content, (str, list)):
-                raise GatewayError(400, "Message content must be text.", "invalid_request")
-            if isinstance(content, list) and any(isinstance(part, dict) and not isinstance(part.get("text"), str) for part in content):
-                raise GatewayError(400, "Text parts require a string text value.", "invalid_request")
-            if isinstance(content, list) and any(not isinstance(part, dict) or part.get("type") not in ("input_text", "output_text", "text") for part in content):
-                raise GatewayError(400, "This Responses stage accepts text content only.", "unsupported_capability")
     model_name = body.get("model", DEFAULT_MODEL)
-    instructions = body.get("instructions", "")
     stream = body.get("stream", False)
-
-    # Extract prompt from input or messages
-    prompt = ""
-    raw_input = body.get("input", "")
-    if isinstance(raw_input, str):
-        prompt = raw_input
-    elif isinstance(raw_input, list):
-        if not CLEAR_CHAT_ON_REQUEST:
-            # Continuous chat: only extract the latest user message
-            last_msg = ""
-            for item in reversed(raw_input):
-                if isinstance(item, str):
-                    last_msg = item.strip()
-                    break
-                elif isinstance(item, dict):
-                    if item.get("role", "user") == "user":
-                        content = item.get("content", "")
-                        if isinstance(content, list):
-                            content = " ".join([c.get("text", "") for c in content if isinstance(c, dict) and "text" in c])
-                        last_msg = str(content).strip()
-                        break
-            prompt = last_msg
-        else:
-            parts = []
-            for item in raw_input:
-                if isinstance(item, str):
-                    parts.append(item.strip())
-                elif isinstance(item, dict):
-                    content = item.get("content", "")
-                    if isinstance(content, list):
-                        content = " ".join([c.get("text", "") for c in content if isinstance(c, dict) and "text" in c])
-                    role = item.get("role", "user")
-                    if len(raw_input) == 1 and role == "user":
-                        parts.append(str(content).strip())
-                    else:
-                        parts.append(f"{role}: {content}")
-            prompt = "\n".join(parts)
-
-    if not prompt and "messages" in body:
-        raw_messages = body["messages"]
-        if not isinstance(raw_messages, list) or any(
-            not isinstance(message, dict) or not isinstance(message.get("role"), str)
-            or not isinstance(message.get("content"), str) for message in raw_messages
-        ):
-            raise GatewayError(400, "Messages require a role and text content.", "invalid_request")
-        messages = [ChatMessage(**message) for message in raw_messages]
-        prompt = format_messages_to_prompt(messages)
-
+    prompt = format_messages_to_prompt(responses_messages(body))
     if not prompt.strip():
         raise GatewayError(400, "A nonempty text prompt is required.", "empty_prompt")
-
-    if instructions and not prompt.startswith("[System"):
-        prompt = f"[System Instructions]\n{instructions}\n\n{prompt}"
 
     batch_size_header = request.headers.get("x-batch-size")
     batch_size = int(batch_size_header) if (batch_size_header and batch_size_header.isdigit()) else None
@@ -164,46 +100,46 @@ async def responses_endpoint(request: Request):
                     else:
                         full_text += chunk_data
 
-        response_payload = {
-            "id": resp_id,
-            "object": "response",
-            "created_at": now,
-            "status": "completed",
-            "store": False,
-            "model": model_name,
-            "output": [
-                {
-                    "type": "message",
-                    "id": f"msg_{uuid.uuid4().hex[:16]}",
-                    "role": "assistant",
+                response_payload = {
+                    "id": resp_id,
+                    "object": "response",
+                    "created_at": now,
                     "status": "completed",
-                    "content": [
+                    "store": False,
+                    "model": model_name,
+                    "output": [
                         {
-                            "type": "output_text",
-                            "annotations": [],
-                            "text": full_text
+                            "type": "message",
+                            "id": f"msg_{uuid.uuid4().hex[:16]}",
+                            "role": "assistant",
+                            "status": "completed",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "annotations": [],
+                                    "text": full_text
+                                }
+                            ]
                         }
-                    ]
+                    ],
+                    "output_text": full_text,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": full_text
+                            },
+                            "finish_reason": "stop"
+                        }
+                    ],
+                    "usage": browser_manager.last_usage.responses() if browser_manager.last_usage else None
                 }
-            ],
-            "output_text": full_text,
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": full_text
-                    },
-                    "finish_reason": "stop"
+                timings = getattr(browser_manager, "last_timings", {})
+                headers = {
+                    "X-Timing-PreExec": f"{timings.get('pre_exec', 0.0):.2f}s",
+                    "X-Timing-Generation": f"{timings.get('generation', 0.0):.2f}s",
+                    "X-Timing-Total": f"{timings.get('total', 0.0):.2f}s"
                 }
-            ],
-            "usage": browser_manager.last_usage.responses() if browser_manager.last_usage else None
-        }
-        timings = getattr(browser_manager, "last_timings", {})
-        headers = {
-            "X-Timing-PreExec": f"{timings.get('pre_exec', 0.0):.2f}s",
-            "X-Timing-Generation": f"{timings.get('generation', 0.0):.2f}s",
-            "X-Timing-Total": f"{timings.get('total', 0.0):.2f}s"
-        }
-        headers.update(usage_headers(resp_id))
-        return JSONResponse(response_payload, headers=headers)
+                headers.update(usage_headers(resp_id))
+                return JSONResponse(response_payload, headers=headers)
