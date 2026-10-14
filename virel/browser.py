@@ -40,6 +40,7 @@ class WebHookBrowserManager:
         self.search_verified = False
         self.last_tool_calls_count = 0
         self.last_usage = None
+        self.comparison_skipped = False
         self.usage_observer = BrowserUsageObserver()
 
     async def start(self):
@@ -402,13 +403,41 @@ class WebHookBrowserManager:
     async def send_prompt_and_stream(self, prompt, model_name=None, batch_size=None, enable_search=None, images=None, request_id=None):
         attempt_id = request_id or uuid.uuid4().hex
         self.last_usage = None
+        self.comparison_skipped = False
         self.usage_observer.begin(attempt_id, prompt)
         try:
             async with aclosing(self._generate_in_page(prompt, model_name, batch_size, enable_search, images)) as stream:
                 async for item in stream:
                     yield item
         finally:
-            self.last_usage = await self.usage_observer.finish(attempt_id)
+            usage = await self.usage_observer.finish(attempt_id)
+            self.last_usage = None if self.comparison_skipped else usage
+
+    async def attach_images(self, paths: List[str]) -> bool:
+        """Do not run until all current-request attachment chips are ready."""
+        try:
+            file_input = self.page.locator('input[type="file"], [data-test-upload-file-input]').first
+            await file_input.wait_for(state="attached", timeout=8000)
+            await file_input.set_input_files(paths)
+            ready = """(expected) => {
+                const selector = '.prompt-media-item-container, .prompt-box-container .file-chip, ms-prompt-box ms-file-chip';
+                const chips = Array.from(document.querySelectorAll(selector)).filter(el => !el.parentElement?.closest(selector));
+                const busy = Array.from(document.querySelectorAll('.prompt-box-container [role="progressbar"], ms-prompt-box [role="progressbar"], .prompt-box-container mat-progress-spinner, ms-prompt-box ms-spinner'))
+                    .some(el => el.getClientRects().length > 0);
+                const unloaded = chips.some(el => Array.from(el.querySelectorAll('img')).some(img => !img.complete || img.naturalWidth === 0));
+                return chips.length === expected && !busy && !unloaded;
+            }"""
+            # AI Studio Trusted Types blocks wait_for_function's eval; direct evaluation works.
+            deadline = time.monotonic() + self.get_adaptive_timeouts(len(paths))["initial_start_timeout"]
+            while time.monotonic() < deadline:
+                if await self.page.evaluate(ready, len(paths)):
+                    return True
+                await asyncio.sleep(0.25)
+            logger.warning("Image attachment readiness timed out.")
+            return False
+        except Exception as error:
+            logger.warning("Image upload or attachment readiness failed: %s", str(error).splitlines()[0])
+            return False
 
     async def _generate_in_page(
         self, prompt: str, model_name: Optional[str] = None, batch_size: Optional[int] = None, enable_search: Optional[bool] = None, images: Optional[List[str]] = None
@@ -490,36 +519,9 @@ class WebHookBrowserManager:
             yield {"error": "[Error: Could not locate chat prompt input in Google AI Studio. Check debug_missing_input.png]"}
             return
 
-        # 2.5 Attach images if provided (Vision Multi-Modal Support)
-        if images:
-            logger.info(f"Attaching {len(images)} image(s) to prompt via file input: {images}")
-            attached_ok = False
-            for attempt in range(1, 4):
-                try:
-                    file_input = self.page.locator('input[type="file"], [data-test-upload-file-input]').first
-                    await file_input.wait_for(state="attached", timeout=10000)
-                    await file_input.set_input_files(images)
-                    logger.info(f"Files set on input (attempt {attempt}). Waiting for thumbnail chip...")
-                    await asyncio.sleep(1.0)
-                    for _ in range(16):
-                        chip_count = await self.page.locator(
-                            '.prompt-box-container img, ms-prompt-box img, .media-chunk, .file-chip, [data-test*="media"], ms-file-chip, [data-test-id*="media"]'
-                        ).count()
-                        if chip_count > 0:
-                            logger.info(f"Detected {chip_count} uploaded media chip(s) in AI Studio UI.")
-                            attached_ok = True
-                            break
-                        await asyncio.sleep(0.5)
-                    if attached_ok:
-                        break
-                except Exception as e:
-                    logger.warning(f"Error attaching images on attempt {attempt}: {e}")
-                    await asyncio.sleep(1.0)
-
-            if not attached_ok:
-                logger.error("CRITICAL: Failed to attach image to Google AI Studio prompt! Aborting to prevent text-only hallucination.")
-                yield {"error": "[Error: Image could not be attached to Google AI Studio prompt. File upload failed.]"}
-                return
+        if images and not await self.attach_images(images):
+            yield {"error": "[Error: Image upload could not establish all ready attachments]"}
+            return
 
         # 3. Focus, clear, and insert prompt text cleanly via JAVASCRIPT
         try:
@@ -559,7 +561,8 @@ class WebHookBrowserManager:
         run_btn = self.page.locator('button.ctrl-enter-submits, button.ctrl-enter, button[mattooltipclass="run-button-tooltip"], button:has-text("Run")').first
         run_active = False
         t_wait_start = time.time()
-        for i in range(50):  # up to 25s for large images/prompts
+        run_deadline = time.monotonic() + (t_cfg["initial_start_timeout"] if images else 25)
+        while time.monotonic() < run_deadline:
             try:
                 aria_dis = await run_btn.get_attribute("aria-disabled")
                 is_dis = await run_btn.is_disabled()
@@ -570,6 +573,10 @@ class WebHookBrowserManager:
             except Exception:
                 pass
             await asyncio.sleep(0.5)
+
+        if images and not run_active:
+            yield {"error": "[Error: IMAGE_TOKENIZATION_TIMEOUT - image processing did not enable Run]"}
+            return
 
         current_state = self.STATE_NO_RESPONSE_STARTED
         t_turn_detected: Optional[float] = None
@@ -638,6 +645,16 @@ class WebHookBrowserManager:
             new_model_turn_started = state.get("new_model_turn_started", False)
             has_error = state.get("has_error", False)
             self.last_tool_calls_count = state.get("tool_calls", 0)
+
+            if not is_running:
+                comparison = self.page.get_by_text("Which response do you prefer?", exact=True)
+                if await comparison.is_visible():
+                    await self.page.get_by_role("button", name="Skip", exact=True).click(timeout=3000)
+                    self.comparison_skipped = True
+                    await comparison.wait_for(state="hidden", timeout=5000)
+                    stability_start_time = None
+                    logger.info("Skipped optional response comparison without voting; usage is unavailable for this attempt.")
+                    continue
 
             # Check for fatal or tool call error in AI Studio
             if has_error and not is_running and elapsed > 0.5:
