@@ -1,48 +1,40 @@
-"""Message-to-prompt conversion and incoming image file preparation."""
+"""Faithful caller history and existing incoming image preparation."""
 
 import base64
+import json
 import logging
 import os
-import re
 import uuid
 from typing import List, Tuple
 
 from .config import TEMP_UPLOADS_DIR
+from .errors import GatewayError
 from .schemas import ChatMessage
 
 logger = logging.getLogger("virel.webhook")
 
 
 def extract_prompt_and_images(messages: List[ChatMessage]) -> Tuple[str, List[str]]:
-    """
-    Combines user/system messages into a pristine prompt string and extracts any image URLs
-    (supporting Base64 data URLs, remote URLs, and local file paths).
-    """
-    system_lines = []
-    user_lines = []
+    turns = []
     image_paths = []
-
-    for m in messages:
-        content = m.content or ""
+    for message in messages:
+        if message.role not in ("system", "developer", "user", "assistant"):
+            raise GatewayError(400, "This stage accepts system, developer, user and assistant text roles.", "unsupported_role")
+        content = message.content
+        text_parts = []
+        if content is None:
+            content = ""
         if isinstance(content, str):
-            text_val = content.strip()
-            if text_val:
-                if m.role == "system":
-                    system_lines.append(text_val)
-                elif m.role == "user":
-                    user_lines.append(text_val)
+            text_parts.append(content)
         elif isinstance(content, list):
             for part in content:
                 if not isinstance(part, dict):
-                    continue
+                    raise GatewayError(400, "Message parts must be objects.", "invalid_request")
                 p_type = part.get("type", "")
                 if p_type == "text":
-                    t = str(part.get("text", "")).strip()
-                    if t:
-                        if m.role == "system":
-                            system_lines.append(t)
-                        elif m.role == "user":
-                            user_lines.append(t)
+                    if not isinstance(part.get("text"), str):
+                        raise GatewayError(400, "Text parts require a string text value.", "invalid_request")
+                    text_parts.append(part["text"])
                 elif p_type == "image_url":
                     img_info = part.get("image_url", {})
                     url = img_info.get("url", "") if isinstance(img_info, dict) else str(img_info)
@@ -80,28 +72,63 @@ def extract_prompt_and_images(messages: List[ChatMessage]) -> Tuple[str, List[st
                         except Exception as e:
                             logger.error(f"Failed to download image URL {url}: {e}")
 
-    # Sanitize user content: remove any leaked thoughts or historical reasoning markers
-    clean_user_lines = []
-    for u in user_lines:
-        u_clean = re.sub(r'<\s*thought\b[^>]*>.*?<\s*/\s*thought\s*>', '', u, flags=re.DOTALL | re.IGNORECASE)
-        u_clean = re.sub(r'\*\*(?:Defining the Problem|Refining the Matching Criteria|Analyzing Match Results|Thinking Process)\*\*.*?(?=\n\n|$)', '', u_clean, flags=re.DOTALL)
-        u_clean = re.sub(r'(?:Defining the Problem|Refining the Matching Criteria|Analyzing Match Results|I\'ve just\b).*?(?=\n\n|$)', '', u_clean, flags=re.DOTALL)
-        u_clean = u_clean.strip()
-        if u_clean:
-            clean_user_lines.append(u_clean)
+                else:
+                    raise GatewayError(400, "This message content type is not supported yet.", "unsupported_capability")
+        else:
+            raise GatewayError(400, "Message content must be text or supported parts.", "invalid_request")
+        turns.append({"role": message.role, "content": "\n".join(text_parts)})
 
-    parts = []
-    if system_lines:
-        parts.append("[System Instructions]\n" + "\n\n".join(system_lines))
-
-    if clean_user_lines:
-        parts.append("\n\n".join(clean_user_lines))
-
-    prompt = "\n\n".join(parts)
+    if not turns or not any(turn["content"].strip() for turn in turns):
+        prompt = ""
+    elif len(turns) == 1 and turns[0]["role"] == "user":
+        prompt = turns[0]["content"]
+    elif len(turns) == 2 and [turn["role"] for turn in turns] == ["system", "user"]:
+        prompt = "[System Instructions]\n" + turns[0]["content"] + "\n\n" + turns[1]["content"]
+    else:
+        # shortcut: roles are text labels; use native UI turn controls when role enforcement is required.
+        prompt = "Continue this conversation and answer the final message:\n" + json.dumps(turns, ensure_ascii=False)
     return prompt, image_paths
 
 
 def format_messages_to_prompt(messages: List[ChatMessage]) -> str:
-    """Combines user/system messages into a pristine, clean prompt string, completely omitting any historical reasoning."""
     prompt, _ = extract_prompt_and_images(messages)
     return prompt
+
+
+def responses_messages(body):
+    """Normalize only supported Responses text input, preserving roles and order."""
+    raw = body.get("input", "")
+    legacy = not raw and "messages" in body
+    if legacy:
+        raw = body["messages"]
+    if isinstance(raw, str):
+        result = [ChatMessage(role="user", content=raw)]
+    elif isinstance(raw, list):
+        result = []
+        for item in raw:
+            if isinstance(item, str) and not legacy:
+                result.append(ChatMessage(role="user", content=item))
+                continue
+            if not isinstance(item, dict) or item.get("type", "message") != "message":
+                raise GatewayError(400, "Only text message input is supported.", "unsupported_capability")
+            role = item.get("role", None if legacy else "user")
+            if not isinstance(role, str):
+                raise GatewayError(400, "Messages require a text role.", "invalid_request")
+            content = item.get("content", "")
+            if isinstance(content, list) and not legacy:
+                normalized = []
+                for part in content:
+                    if not isinstance(part, dict) or part.get("type") not in ("input_text", "output_text", "text"):
+                        raise GatewayError(400, "This Responses stage accepts text content only.", "unsupported_capability")
+                    if not isinstance(part.get("text"), str):
+                        raise GatewayError(400, "Text parts require a string text value.", "invalid_request")
+                    normalized.append({"type": "text", "text": part["text"]})
+                content = normalized
+            elif not isinstance(content, str):
+                raise GatewayError(400, "Messages require text content.", "invalid_request")
+            result.append(ChatMessage(role=role, content=content))
+    else:
+        raise GatewayError(400, "Input must be text or messages.", "invalid_request")
+    if body.get("instructions"):
+        result.insert(0, ChatMessage(role="system", content=body["instructions"]))
+    return result

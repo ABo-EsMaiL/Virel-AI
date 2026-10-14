@@ -34,7 +34,7 @@ POST `/v1/chat/completions` with `Authorization: Bearer <VIREL_API_KEY>`:
 
 Read `choices[0].message.content`. Missing `stream` returns JSON; explicit `stream: true` uses the inherited SSE adapter. Responses text uses POST `/v1/responses` with `{"input":"Hello"}`. Reported usage is returned when observed; unavailable counts remain null.
 
-Native n8n OpenAI Chat 1.8 and Responses 2.3 text passed in raw and simplified modes. Sessions/history, full streaming protocols, media and tools remain staged work. AI Studio changes and account limits can affect generation.
+Native n8n OpenAI Chat 1.8 and Responses 2.3 text passed in raw and simplified modes. Clients own memory: send the complete ordered text history with each request. Virel replays it once in a verified fresh browser chat; it does not store conversations. History is a text transcript, not native provider role enforcement. Full streaming protocols, media and tools remain staged work. AI Studio changes and account limits can affect generation.
 
 ## License
 

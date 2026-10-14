@@ -114,30 +114,30 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
                     else:
                         full_text += chunk_data
 
-        timings = getattr(browser_manager, "last_timings", {})
-        headers = {
-            "X-Timing-PreExec": f"{timings.get('pre_exec', 0.0):.2f}s",
-            "X-Timing-Generation": f"{timings.get('generation', 0.0):.2f}s",
-            "X-Timing-Total": f"{timings.get('total', 0.0):.2f}s",
-            "X-Batch-Size": str(batch_size or 0),
-            "X-Google-Search-Enabled": str(browser_manager.google_search_enabled).lower(),
-            "X-Tool-Calls-Count": str(browser_manager.last_tool_calls_count),
-            "X-Thinking-Mode": str(browser_manager.active_thinking),
-            "X-Final-Status": str(timings.get('state', 'UNKNOWN')),
-        }
-        headers.update(usage_headers(chunk_id))
-        return JSONResponse({
-            "id": chunk_id,
-            "object": "chat.completion",
-            "created": now,
-            "model": model_name,
-            "usage": browser_manager.last_usage.chat() if browser_manager.last_usage else None,
-            "choices": [{
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": full_text
-                },
-                "finish_reason": "stop"
-            }]
-        }, headers=headers)
+                timings = getattr(browser_manager, "last_timings", {})
+                headers = {
+                    "X-Timing-PreExec": f"{timings.get('pre_exec', 0.0):.2f}s",
+                    "X-Timing-Generation": f"{timings.get('generation', 0.0):.2f}s",
+                    "X-Timing-Total": f"{timings.get('total', 0.0):.2f}s",
+                    "X-Batch-Size": str(batch_size or 0),
+                    "X-Google-Search-Enabled": str(browser_manager.google_search_enabled).lower(),
+                    "X-Tool-Calls-Count": str(browser_manager.last_tool_calls_count),
+                    "X-Thinking-Mode": str(browser_manager.active_thinking),
+                    "X-Final-Status": str(timings.get('state', 'UNKNOWN')),
+                }
+                headers.update(usage_headers(chunk_id))
+                return JSONResponse({
+                    "id": chunk_id,
+                    "object": "chat.completion",
+                    "created": now,
+                    "model": model_name,
+                    "usage": browser_manager.last_usage.chat() if browser_manager.last_usage else None,
+                    "choices": [{
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": full_text
+                        },
+                        "finish_reason": "stop"
+                    }]
+                }, headers=headers)

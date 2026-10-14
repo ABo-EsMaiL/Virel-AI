@@ -41,16 +41,16 @@ async def legacy_completions(request: Request):
                 else:
                     full_text += chunk_data
 
-    return JSONResponse({
-        "id": chunk_id,
-        "object": "text_completion",
-        "usage": browser_manager.last_usage.chat() if browser_manager.last_usage else None,
-        "created": now,
-        "model": model_name,
-        "choices": [{
-            "text": full_text,
-            "index": 0,
-            "logprobs": None,
-            "finish_reason": "stop"
-        }]
-    }, headers=usage_headers(chunk_id))
+            return JSONResponse({
+                "id": chunk_id,
+                "object": "text_completion",
+                "usage": browser_manager.last_usage.chat() if browser_manager.last_usage else None,
+                "created": now,
+                "model": model_name,
+                "choices": [{
+                    "text": full_text,
+                    "index": 0,
+                    "logprobs": None,
+                    "finish_reason": "stop"
+                }]
+            }, headers=usage_headers(chunk_id))
