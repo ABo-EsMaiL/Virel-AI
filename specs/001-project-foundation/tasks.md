@@ -1,30 +1,24 @@
-# Tasks: تأسيس Virel AI
+# Tasks: Project foundation
 
-المهام دي تخص التأسيس المحلي؛ future roadmap وGitHub remote ليهم متابعة مستقلة.
+## Setup
 
-## Phase 1: Setup
+- [x] T001 Inventory active files and exclude private/generated data — FR-001.
+- [x] T002 Official Spec Kit Codex/PowerShell, Git extension and constitution — FR-005.
+- [x] T003 Git bootstrap and feature branch — FR-005.
 
-- [x] T001 توثيق inventory المستخدم واستبعاد private/generated ملفات — FR-001.
-- [x] T002 تجهيز official Spec Kit Codex/PowerShell وGit extension وconstitution — FR-005.
-- [x] T003 Git bootstrap وbranch `001-project-foundation` — FR-005.
+## Independent application
 
-## Phase 2: US1 — نسخ المصدر
+- [x] T004 Copy source/tests/dependencies/Docker/LICENSE — FR-001/002.
+- [x] T005 Rebrand imports/settings and root runtime paths — FR-002/003.
+- [x] T006 Pass 17 offline checks and record simulation limits — SC-001/FR-006.
 
-- [x] T004 نقل app/get_session/virel/routes/tests/dependencies/Docker وLICENSE — FR-001/002.
-- [x] T005 تغيير كل imports وbranding/env vars؛ root .env وruntime profile/session/uploads — FR-002/003.
-- [x] T006 تشغيل الـ١٧ اختبار وتوثيق أن الردود simulated وDOM معزول — SC-001/FR-006.
+## Documentation and delivery
 
-## Phase 3: US2 — قراءة المشروع
+- [x] T007 Ownership, request flow, inputs and inherited limits — FR-004.
+- [x] T008 Verify originally requested documentation formatting — FR-004.
+- [x] T009 Verify links and preview; record evidence — SC-003/004.
+- [x] T010 Staged native-client roadmap and history policies — FR-004/006.
+- [x] T011 GitHub offline-check workflow — FR-005.
+- [x] T012 Review, commit, merge and tag local foundation — SC-002/004.
 
-- [x] T007 README وخريطة الملفات ورحلة الطلب وأشكال المدخلات وتقرير الحدود — FR-004.
-- [x] T008 docs RTL وcode LTR وVS Code stylesheet — FR-004.
-- [x] T009 التحقق من الروابط والـrender بصريًا وتسجيل evidence — SC-003/004.
-
-## Phase 4: US3 — مسار التطوير
-
-- [x] T010 roadmap لnative n8n ثم media/tools/stream والعملاء وسياسة history — FR-004/006.
-- [x] T011 GitHub Actions offline test workflow دون Google secrets — FR-005.
-- [x] T012 مراجعة source/paths/ignore/diff ثم commit وmerge/tag محليًا وتسجيل evidence — SC-002/004.
-
-## Delivery Boundary
-الرفع على GitHub ونجاح CI هناك وbranch protection مستنيين URL repo، ومتسجلين في `tasks/todo.md`؛ مش علامة فشل لاختبار محلي، ومش مكتملين من مجرد كتابة workflow. تجربة Google الحية ودعم العملاء والمدخلات الجديدة خارج المرحلة.
+Foundation subsequently published to GitHub. Public formatting and language are now governed by the user's plain-English-Markdown decision. Future feature acceptance remains separate.

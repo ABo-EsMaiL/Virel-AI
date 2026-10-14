@@ -1,39 +1,31 @@
-# تقرير التأسيس والتنضيف
+# Foundation report
 
-تاريخ التأسيس: 2026-10-14. Virel AI نسخة مستقلة مشتقة من نسخة AI Studio المنظّفة؛ مش clone أعمى لكل فولدر المشروع القديم.
+Date: 2026-10-14. Virel AI was derived from the cleaned AI Studio copy and retains original LICENSE attribution.
 
-## اللي اتنقل
+## Retained and changed
 
-الكود الفعّال بس: app، get_session، حزمة التشغيل والـroutes، ١٧ اختبار، requirements، Docker، قالب env، ignore rules، وLICENSE بنفس نسبته الأصلية. اتغيّر اسم حزمة `msemax` لـ`virel` في imports والاختبارات وDocker، واسم gateway وإصدار البداية لـ`0.1.0`.
+Retained active app/login/package/routes/tests/dependencies/Docker files. Renamed imports from `msemax` to `virel`, public branding to Virel AI and gateway settings to `VIREL_API_KEY`, `VIREL_RATE_LIMIT`, `VIREL_MAX_CONCURRENT`. Runtime profile/session/uploads share project-root paths. Generation behavior was preserved.
 
-الإعدادات الجديدة: `VIREL_API_KEY`، `VIREL_RATE_LIMIT`، `VIREL_MAX_CONCURRENT`. `.env` يتقرأ من جذر Virel AI، وprofile النسبي يتفسر من جذر المشروع، مش cwd. profile وsession/uploads اتجمعوا في `runtime/`. إعداد تسجيل الدخول والخادم بيشيروا لنفس profile ونفس metadata.
+Private `.env`, account profiles, old uploads, recordings, screenshots, caches and machine-specific launchers were not copied. The original profile remains available. The user later authorized its reuse after closing the old instance. No private profile is committed.
 
-## اللي ما اتنقلش
+The earlier cleanup removed 131 files totaling 23,786,663 bytes; see the [inventory](cleanup-inventory.md). Recovery data lives outside this repository and contains private settings.
 
-بيانات Google وcookies، `.env` الحقيقي، uploads القديمة، فيديو/صور/سجلات الفحص، ملفات cache وبيئات Python، اسم حزمة ChatGPT القديم، scripts تشغيل تعتمد على مسارات جهاز بعينه، والوثائق المكررة. `__pycache__` اللي الاختبارات بتعمله تلقائيًا متجاهَل، مش source.
+## Verification
 
-في تنظيف النسخة السابقة اتشال ١٣١ ملف بحوالي ٢٣٫٨ MB؛ [قائمة الحذف وأسبابه](cleanup-inventory.md) محفوظة كسجل تاريخي. النسخة الأصلية وجلسة دخولها موجودين في مكانهم. نسخة ما قبل التنظيف محفوظة خارج repo، وفيها بيانات خاصة؛ ما ترفعهاش مع المشروع.
+17 offline tests cover auth, validation, Chat JSON/SSE, busy admission, Responses/alias, legacy completions, health/catalog, prompt/image conversion, isolated Chromium DOM extraction and paths from a different working directory. A path mutation was caught and restored. Foundation and branding PR checks passed on GitHub.
 
-## اللي اتجرّب
+HTML/RTL formatting originally verified during foundation was removed at the user's request. All maintained public documentation now uses ordinary English Markdown.
 
-١٦ اختبار موروث + اختبار جديد لمسارات التشغيل من cwd مختلف = ١٧ اختبار محلي: Bearer/بدون مفتاح، رفض جسم ناقص، Chat JSON وSSE، headers، busy 429، Responses وalias وSSE الحالي، Completions القديم، health/models، تحويل رسائل وصور base64، تطابق profile بين login والخادم، وقراءة الرد/fallback داخل Chromium معزول. نماذج الردود في الاختبارات ثابتة، مش Gemini حي.
+## Inherited gaps
 
-## حدود النسخة الحالية اللي لازم ما تتخبّاش
-
-| الحد | نعالجه فين؟ |
+| Gap | Planned stage |
 |---|---|
-| خطأ browser ممكن يتحول لـHTTP 200 أو رد فاضي؛ readiness ضعيف | 002 |
-| debug/shutdown من غير حماية مناسبة، وصلاحيات CORS واسعة | 002 قبل أي إتاحة خارج localhost |
-| Chat بيتجاهل assistant history وبيغيّر نصوص بأنماط قديمة | 003 |
-| clear=false تبويب مشترك؛ sessions مش منفذة | 003 |
-| صور من URL/مسار محلي من غير حدود وثقة مناسبة | 004 |
-| Responses جزئي، ملفات PDF مش مدعومة، token usage مش محسوب بدقة | 005 وما تحتاجه مراحل العملاء |
-| أسماء models ثابتة؛ بعض المسارات مش بتوصل model للمتصفح | 007 |
-| لا أدوات عميل أصلية ولا توليد صوت/صورة/فيديو | مراحل الوسائط والأدوات |
-| شكل SSE الحالي مش كفاية لضمان Codex أو أي عميل | 013 و016 |
+| Browser failures may become success responses; weak readiness; unprotected diagnostics | 002 |
+| Dropped assistant history and shared continuous chat | 003 |
+| Unrestricted image URL/local-file inputs and missing cleanup | 004 |
+| Partial Responses/files and inaccurate usage | 002 / 005 |
+| Static catalog and model selection not strictly verified | 007 |
+| Missing native client tools/media generation | Dedicated capability stages |
+| Custom Responses SSE and incomplete cancellation | 013 / client stages |
 
-مشروع بالشكل ده يسمح نبني adapters ونضيف القدرات تدريجيًا. حدود السياق والسرعة وتغير UI وقدرات الموديل/الحساب موجودة مهما نظّمنا الكود؛ وعد «كل عميل وكل ميزة 100%» محتاج مصفوفة تجارب فعلية، وممكن عميل أصلًا ما يسمحش بـcustom endpoint.
-
-## شكل Git عند تسليم التأسيس
-
-main لتأسيس الأدوات، branch `001-project-foundation` لنقل المصدر والتوثيق والتحقق، ثم merge محلي وtag `v0.1.0`. المرحلة 002 لسه ما اتنفذتش. GitHub remote وchecks البعيدة وbranch protection لسه مستنيين repo. نرفع source والوثائق؛ runtime والأسرار متجاهَلة.
+The structure supports incremental adapters. Website changes, account limits and model capabilities remain real constraints. Offline tests are not live provider/client certification.

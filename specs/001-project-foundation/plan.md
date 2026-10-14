@@ -1,28 +1,21 @@
-# Implementation Plan: تأسيس Virel AI
+# Implementation Plan: Project foundation
 
 **Branch**: `001-project-foundation` | **Date**: 2026-10-14 | **Spec**: [spec.md](spec.md)
 
-## Summary
-نسخة مستقلة في Virel AI، نفس Python/FastAPI/Playwright مع حدود modules الموجودة، rebrand ومسارات runtime، official Spec Kit، docs RTL وCI صغير. مصدر runtime الموروث هو النسخة المنظفة، وما نزودش ميزات provider هنا.
+Copy active Python/FastAPI/Playwright source into an independent package; retain module boundaries, generation behavior and dependency versions. Root configuration and runtime storage at the project directory. Keep one worker for the single browser.
 
-## Technical Context
-Python 3.12، FastAPI وPydantic وslowapi وPlaywright، unittest وhttpx للاختبارات. Windows للتجربة المحلية؛ Linux CI مُجهّز ولم يُجرّب عن بعد. متصفح واحد/worker واحد. التخزين profile وmetadata/uploads محلية؛ مفيش DB جديدة أو Google SDK. نسخ dependencies زي النسخة المنظفة.
+## Sequence
 
-## Constitution Check
-حدود source واضحة؛ native acceptance مستقبلية ومش منسوبة للاختبارات الحالية؛ عيوب history/errors/input الموروثة استثناء baseline موثق للمرحلة الأولى فقط. خصوصية runtime محفوظة؛ docs RTL؛ لا تنفيذ تلقائي للـroadmap.
+1. Inventory active files; exclude private/generated data.
+2. Update imports, configuration, health, Docker and tests.
+3. Initialize official Spec Kit, constitution and feature branch.
+4. Add reference/roadmap/client docs and GitHub checks.
+5. Verify offline contracts, paths, source differences, links and preview; review, commit, merge and tag.
 
-## Project Structure
-`app.py` و`get_session.py` نقطتي تشغيل، `virel/` application وroutes، `tests/` checks، `docs/` مرجع، `tasks/` roadmap، `specs/001-project-foundation/` spec/plan/tasks/evidence، `.specify/` و`.agents/` أدوات رسمية، `runtime/` private ignored.
+## Validation
 
-## Implementation Sequence
-1. inventory الملفات الفعالة → نسخ لVirel من غير env/profile.
-2. تغيير imports/config/health/Docker/tests، تجميع runtime ومسارات ثابتة بالنسبة لجذر المشروع.
-3. إعداد Spec Kit الرسمي والـconstitution؛ Git bootstrap ثم feature branch.
-4. توثيق RTL والخريطة والعقود والـroadmap، GitHub checks للـ١٧ اختبار.
-5. اختبارات ومراجعة doc links/preview/source/ignore، evidence ثم commit/merge/tag محليًا.
+17 offline checks; mutation of profile-relative logic caught; AST parse; Markdown links/render; tracked-private-file check. Foundation and branding checks passed on GitHub. No Google account/client calls were part of foundation verification.
 
-## Validation and Delivery
-تشغيل الـ١٧ اختبار بعد نقل المصدر. تحقق path config من cwd مختلف بدون تشغيل Google. MarkdownIt HTML render ثم isolated Chromium preview. فحص diff وGit tracked secrets/old names. لا اختبار Google حي/داخل Docker/Actions remote. يتسجل المطلوب المتبقي بدل اختلاق نجاح.
+## Historical formatting
 
-## Complexity Tracking
-مفيش abstraction جديدة أو empty feature modules. browser.py الكبير يفضل زي ما هو في التأسيس؛ تقسيمه يتبع حاجة feature واختباراتها. أدوات Spec Kit متعددة الملفات upstream محتفظين بيها علشان شغله الرسمي، مش بقايا ChatGPT.
+The initial Arabic RTL documentation was later replaced by ordinary English Markdown at the user's request. No empty future modules or new runtime abstraction were created.

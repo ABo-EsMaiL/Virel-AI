@@ -1,54 +1,38 @@
-# خطة Virel AI — واحدة واحدة
+# Virel AI roadmap
 
-**المرحلة الحالية: 001 تأسيس المشروع. اللي بعدها: 002 نص في n8n.** التنفيذ للمراحل القادمة يبدأ بعد اتفاقنا على spec المرحلة. الجدول ترتيب عمل مقترح، مش تقرير ميزات اشتغلت.
+Stage 002 is authorized and next. The table is a development sequence, not a supported-capabilities list. Each stage keeps earlier checks green and records actual native-client evidence. A Code or replacement HTTP node does not count as native n8n support.
 
-## إمتى نقول مرحلة خلصت؟
-
-الاختبارات القديمة تنجح، اختبارات المرحلة تنجح، والعميل الحقيقي يبعث ويرجع بالطريقة الطبيعية. نسجل إصدار العميل، اسم العملية، المدخل، الموديل الفعلي في UI، النتيجة وتاريخ التجربة. في n8n ما نحسبش Code node أو HTTP Request بديل على إنه توافق native.
-
-| مرحلة / اسم branch المقترح | نعمل إيه؟ | إثبات القبول |
+| Stage / proposed branch | Work | Acceptance |
 |---|---|---|
-| `001-project-foundation` | اسم مستقل، ملفات مستخدمة، RTL، Spec Kit، Git، CI | ١٧ اختبار محلي + مراجعة نقل الملفات؛ CI البعيد بعد إنشاء repo |
-| `002-n8n-text` | credential، models، Chat JSON، usage الطلب للنص، أخطاء صريحة، readiness وحماية تشخيص الخادم | native Generate a Chat Completion يرجع نص وusage بمصدر واضح؛ auth/busy/timeout/UI error يتشافوا صح |
-| `003-history-sessions` | حفظ الأدوار والـhistory، fresh replay، جلسات isolated للـdelta، سجل usage للطلب والجلسة | طلبان مرتبطان يفتكروا صح؛ عميلان ما يشوفوش بعض؛ مفيش history مكرر ولا usage بيتحسب مرتين |
-| `004-n8n-vision` | image-only وimage+text، URL/base64/binary حسب node، validation وحدود وتنظيف | native image analysis + حالة صورة فقط؛ مدخل غير صالح يرجع خطأ |
-| `005-n8n-responses-pdf` | Responses JSON مضبوط، PDF مباشر/FileID، upload/list/delete اللازمة | native Model Response بنص وPDF؛ الرد يظهر في node، حذف الملفات يعمل |
-| `006-n8n-audio-input` | voice/audio multipart وتفريغ وترجمة عند دعم UI والموديل | native Transcribe/Translate من binary معروف؛ الناتج والحجم والمدة صحيحين |
-| `007-model-routing` | كتالوج قدرات حقيقي، تغيير UI مؤكد، اختيار مناسب لكل نوع | موديلان متاحان؛ يثبت الاسم بعد الاختيار؛ غير المتاح يترفض |
-| `008-video-input` | رفع فيديو وتحليله مع حدود مدة/حجم | عميل طبيعي يعرض video input فعلًا؛ لو n8n node مفيهاش مدخل فيديو نسجل ده |
-| `009-n8n-images` | توليد وتعديل صور وإرجاع ملفات حقيقية | native Generate/Edit Image؛ الملف صالح وممكن node بعدها تستخدمه |
-| `010-n8n-audio-output` | توليد صوت بصيغة وملف مناسبين | native Generate Audio؛ تشغيل الملف والتحقق من الصيغة |
-| `011-n8n-video-output` | توليد فيديو وjobs/polling/download حسب البروتوكول | native Generate Video؛ job ينتهي أو يفشل بوضوح، وملف قابل للتشغيل |
-| `012-tools-agents` | tools، tool_choice، tool_calls IDs، tool results، إكمال الدورة | native n8n Agent يستدعي أداة ويرجع نتيجتها؛ مش كلام فيه JSON شبه tool call |
-| `013-streaming` | live DOM deltas، SSE صحيح لكل adapter، cancel/timeout، أخطاء أثناء stream | النص يصل قبل نهاية التوليد، مفيش تكرار، والنهاية صحيحة؛ الرجوع لـJSON يظل شغال |
-| `014-langchain` | استعمال ChatOpenAI أو integration طبيعي حسب البروتوكول | invoke، history، media/tools/stream المدعومين بلا adapter خاص في كود العميل |
-| `015-langgraph` | نفس integration داخل graph/state/tool loop | تشغيل graph وتكملته وإلغاءه؛ حالته مستقلة عن شات browser |
-| `016-codex` | استكمال Responses/events/tools اللي إصدار Codex يحتاجها | جلسة عميل حقيقي تقرأ ملف وتنفذ tool وتكمل بعد النتيجة |
-| `017-claude-code` | Anthropic Messages adapter بما يحتاجه العميل | tool loop وhistory وstream في العميل الحقيقي؛ اختبار حدود استخدام موديل غير Claude |
-| `018-other-clients` | VS Code، OpenCode، Hermes وغيرهم، واحد واحد | نسجل الإصدار ودعم custom endpoint والبروتوكول؛ نجاح عميل مش دليل على الباقي |
+| `001-project-foundation` | Independent package, docs, Spec Kit and CI | Delivered; 17 offline checks |
+| `002-n8n-text` | Native credential/text JSON; readiness/errors; request usage | Actual native Chat Completion succeeds; honest failures and usage |
+| `003-history-sessions` | Role-preserving history; isolated delta sessions; usage ledger | Two conversations stay isolated; no duplicated context/consumption |
+| `004-n8n-vision` | Image-only/image+text; limited validated URL/binary/base64 | Native image analysis; invalid input fails |
+| `005-n8n-responses-pdf` | Responses JSON; PDF upload/IDs/lifecycle | Native Model Response consumes PDF and returns usable output |
+| `006-n8n-audio-input` | Transcription/translation and limits | Native audio operations on known fixtures |
+| `007-model-routing` | Real model/capability catalog and verified UI choice | Correct model or explicit unavailability |
+| `008-video-input` | Validated video input when a native client exposes it | Actual client input and model support verified |
+| `009-n8n-images` | Image generation/edit with real artifacts | Native operation returns valid reusable file |
+| `010-n8n-audio-output` | Audio generation | Native operation returns playable output |
+| `011-n8n-video-output` | Video jobs/status/download | Native operation finishes or fails explicitly |
+| `012-tools-agents` | Tool choice/calls/results and execution loops | Native agent completes a real client tool cycle |
+| `013-streaming` | Live deltas, protocol events, cancel/timeout and final usage | Text arrives before completion; termination/usage are correct |
+| `014-langchain` | Native supported integration | Invoke/history/media/tools/stream regression matrix |
+| `015-langgraph` | Graph state and tool loops | Resume/cancel/isolation through the same integration |
+| `016-codex` | Required Responses/events/client tools | Real file/tool cycle in the actual client |
+| `017-claude-code` | Anthropic Messages adapter | Actual client loop and backend limits tested |
+| `018-other-clients` | VS Code/OpenCode/Hermes, one at a time | Version/custom-endpoint/protocol matrix for each client |
 
-لو عميل محتاج streaming بدري ننقل المرحلة 013 قبل تكامله. توليد الوسائط يتوقف على اللي **واجهة الحساب والموديل المختار** بيوفروه فعلًا؛ مفيش switch يخلق ميزة غير موجودة. Embeddings/moderation/conversations وأي عمليات إضافية ما تتوصفش مدعومة إلا بعد تنفيذ واختبار مستقل. n8n ملهاش شهادة «كل nodes» لمجرد نجاح النص.
+Move streaming earlier when a client requires it. Media generation requires actual website/account/model support. Extra operations such as embeddings/moderation are not supported by implication.
 
-## حساب usage من أول المراحل
+## History policy
 
-[سياسة usage](../docs/usage.md) جزء من قبول المشروع. المرحلة 002 تبدأ عدّ الطلب للنص؛ 003 تربطه بالجلسة؛ كل مرحلة media/tools توسع الحساب لمدخلاتها، و013 تضيف usage النهائي في stream حسب عقد العميل. نفضّل أرقام المصدر الفعلية ونعلن أي تقدير أو نقص؛ ما نستخدمش عدد الكلمات كأنه توكنز.
+Full-history request → fresh browser chat and one faithful replay. Delta-only request → isolated persistent session with ID/reset/expiry. Independent request → fresh chat. The current shared `clear=false` behavior is not isolated sessions. Fresh chats do not bypass context or account limits.
 
-## هنستخدم الشاتين إمتى؟
+## Usage
 
-| العميل بيبعت إيه؟ | وضع المتصفح المستهدف |
-|---|---|
-| history كاملة كل request، زي عملاء agents كتير | شات جديد لكل request، وإرسال history مرة واحدة بأدوارها |
-| آخر رسالة بس وعايز server يحتفظ بالسياق | شات ثابت **خاص بالجلسة** مع session ID/reset وسياسة انتهاء |
-| طلب مستقل | شات جديد |
+Stage 002 begins request usage; 003 adds session aggregation; media/tool stages extend counting; streaming adds protocol-specific final usage. Prefer current-request observations and distinguish reported/estimated/unknown. See [usage contract](../docs/usage.md).
 
-الوضع الحالي `CLEAR_CHAT_ON_REQUEST=false` تبويب واحد مشترك؛ مش نظام sessions ولا اختيار مناسب لعدة عملاء. شات جديد يمنع تراكم/تكرار السياق في المتصفح، لكنه مش بيصغّر history المرسلة ولا يلغي حدود Google.
+## Delivery
 
-## دورة كل مرحلة
-
-1. نكتب spec صغيرة فيها اللي داخل المرحلة واللي خارجها وحالات القبول.
-2. Spec Kit Git extension ينشئ branch واحد بالرقم التالي. نحفظ spec/plan/tasks في `specs/<branch>/`.
-3. تنفيذ واختبارات محلية ثم تجربة node/client حقيقي. نضيف evidence بالحالات الفاشلة والناجحة.
-4. مراجعة diff، PR على GitHub، checks ناجحة، ثم merge في main وtag للنسخة.
-5. نبدأ اللي بعدها. التأسيس اترفع على [Virel-AI](https://github.com/ABo-EsMaiL/Virel-AI)، وchecks التأسيس نجحت على GitHub. أي تحديث له evidence وإصدار واضح.
-
-قوالب العمل من [Spec Kit الرسمي](https://github.com/github/spec-kit). native PDF وأنواع رسائل Model Response موثقة في [n8n Text operations](https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-langchain.openai/text-operations/). Codex له متطلبات Responses نختبرها في [إعدادات Codex](https://learn.chatgpt.com/docs/config-file/config-reference)، وClaude Code له [متطلبات gateway](https://code.claude.com/docs/en/llm-gateway-protocol)؛ تشابه JSON لوحده مش اختبار توافق.
+Spec → branch → plan/tasks → tested implementation → native evidence → review/PR/checks → merge/tag. One feature at a time. Record client version, operation, actual model, input, result and regression outcomes.

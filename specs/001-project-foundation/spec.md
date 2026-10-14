@@ -1,42 +1,34 @@
-# Feature Specification: تأسيس Virel AI
+# Feature Specification: Project foundation
 
-**Feature Branch**: `001-project-foundation` | **Created**: 2026-10-14 | **Status**: Implemented locally; remote verification pending
-
-**Input**: تنظيم نسخة AI Studio كبراند مستقل، نقل المستخدم فقط، RTL، خطة تدريجية وSpec Kit وGit. الاسم المعتمد Virel AI، والفولدر مستقل؛ Google session الأصلية تفضل مكانها.
+**Branch**: `001-project-foundation` | **Created**: 2026-10-14 | **Status**: Delivered
 
 ## User Scenarios & Testing
 
-### US1 — نسخة مستقلة قابلة للتشغيل (P1)
-كمطور أقدر أشتغل في Virel AI بدون اعتماد على source الفولدر القديم.
+### US1 — Independent source (P1)
+Run the active application without depending on old source files. Imports, config, Docker and tests use the new package. Private runtime is not copied or committed.
 
-**Acceptance**: Given الكود المنقول، When نستورد app ونشغّل الاختبارات، Then imports تشير لـvirel والـ١٧ اختبار تنجح. Given مسار تشغيل مختلف، Then env/profile/session مرتبطة بجذر Virel. Given repo، Then بيانات Google وenv الحقيقي غير tracked.
+### US2 — Understand and navigate (P1)
+Find module ownership, request flow, input examples, cleanup evidence and the next stage from README. The originally requested RTL preview was verified, then explicitly superseded by ordinary Markdown and English public documentation.
 
-### US2 — الوصول للملف وقراءة الشرح (P1)
-كمطور عربي أقدر أوصل لملف المهمة وأقرأ نص عربي/English من غير قلب الاتجاه.
-
-**Acceptance**: README يربط الخطة والخريطة والأمثلة والتقرير؛ كل ملف source له مسؤولية مسجلة؛ RTL ظاهر والكود LTR في HTML-enabled Markdown preview. الروابط الداخلية سليمة.
-
-### US3 — مراحل محفوظة وميّزات صادقة (P2)
-كمطور أقدر أعرف الخطوة التالية ومتى تعتبر ناجحة.
-
-**Acceptance**: official Spec Kit وGit extension موجودين، constitution مكتوبة، stage001 في branch مستقل ثم merge/tag محليين، roadmap تحدد native acceptance. GitHub push وCI البعيد يتوقفوا على استلام URL repo، مش بيتوصفوا مكتملين.
+### US3 — Incremental versioned work (P2)
+Use official Spec Kit, constitution, feature branch, tests and release tags. Distinguish offline evidence from live client certification.
 
 ## Requirements
 
-- **FR-001**: نقل source المستخدم والاختبارات والتشغيل فقط؛ حفظ LICENSE الأصلي وعدم نسخ private runtime.
-- **FR-002**: rebrand الحزمة والإعدادات والمسارات والـDocker والاختبارات إلى Virel AI مع حفظ سلوك browser الموروث.
-- **FR-003**: runtime في فولدر متجاهل؛ تحميل env/profile من جذر المشروع؛ login والخادم على نفس profile/session.
-- **FR-004**: docs عربية RTL، code LTR، خريطة ومسار طلب وأمثلة وتقرير حذف وحدود وخطة قصيرة.
-- **FR-005**: تهيئة Spec Kit من الأدوات الرسمية، constitution، branch وسجل محلي وCI workflow.
-- **FR-006**: إثبات محلي وعدم ادعاء Google/n8n/Codex حي أو تنفيذ المراحل القادمة.
+- FR-001: Retain active source and LICENSE attribution; exclude private/generated data.
+- FR-002: Rebrand imports/settings/Docker/tests while preserving generation behavior.
+- FR-003: Root environment/profile/session paths at the project directory.
+- FR-004: Document ownership, request/response shapes, cleanup, limits and staged acceptance.
+- FR-005: Initialize official Spec Kit, Git history and CI.
+- FR-006: Report evidence honestly; do not implement all future stages automatically.
 
 ## Success Criteria
 
-- **SC-001**: الـ١٦ اختبار موروث + اختبار المسارات الجديد ينجح من المشروع الجديد؛ لا Google requests في الاختبارات.
-- **SC-002**: لا private files tracked ولا imports قديمة في source/tests/launchers.
-- **SC-003**: preview RTL وLTR للكود يُراجع بصريًا؛ headings/tables/code محفوظة.
-- **SC-004**: feature artifacts بلا template placeholders وروابط التوثيق الداخلية صحيحة؛ Git main وfeature/tag محفوظين.
+- SC-001: 16 inherited offline tests plus one path regression pass.
+- SC-002: No private runtime tracked and no old package imports in active source.
+- SC-003: Readable preview and valid document links.
+- SC-004: Feature artifacts, main history and release tags exist.
 
-## Edge Cases and Scope
+## Scope and history
 
-غياب GitHub URL يمنع الرفع واختبارات Actions البعيدة فقط. بروفايل جديد يحتاج manual Google login؛ نقل القديم تلقائيًا خارج النطاق. viewer اللي يمنع HTML مش هدف إثبات RTL. HTTP/SSE/history/model defects الموروثة موثقة، وتصليحها في مراحلها؛ ولا ملف feature مستقبلي يتخلق فاضي. تغيير UI الحقيقي أو ترقيات provider مش ضمن المرحلة دي.
+Live Google/client tests and future provider capabilities were outside foundation. The initial private-profile copy was intentionally omitted. Later user decisions authorize profile reuse, Virel AI branding and plain English Markdown; current instructions govern future work.
