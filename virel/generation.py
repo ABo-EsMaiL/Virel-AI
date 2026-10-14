@@ -2,6 +2,7 @@
 import asyncio
 from contextlib import aclosing
 import logging
+from .images import prepared_images
 from .errors import GatewayError
 from .runtime import browser_manager
 
@@ -52,16 +53,17 @@ async def checked_stream(prompt, request_id, **options):
     text = ""
     outcome = "failed"
     try:
-        async with aclosing(browser_manager.send_prompt_and_stream(prompt, request_id=request_id, **options)) as stream:
-            async for item in stream:
-                current = item.get("text", "") if isinstance(item, dict) else item
-                if isinstance(item, dict) and "error" in item:
-                    raise _browser_error(str(item["error"]))
-                if isinstance(item, dict):
-                    text = current
-                else:
-                    text += item
-                yield item
+        async with prepared_images(options.pop("images", [])) as paths:
+            async with aclosing(browser_manager.send_prompt_and_stream(prompt, request_id=request_id, images=paths, **options)) as stream:
+                async for item in stream:
+                    current = item.get("text", "") if isinstance(item, dict) else item
+                    if isinstance(item, dict) and "error" in item:
+                        raise _browser_error(str(item["error"]))
+                    if isinstance(item, dict):
+                        text = current
+                    else:
+                        text += item
+                    yield item
         if not text.strip():
             raise GatewayError(502, "AI Studio returned no response text.", "empty_upstream_response")
         outcome = "completed"

@@ -11,7 +11,7 @@ from ..errors import GatewayError, provider_error
 from ..generation import checked_stream, require_ready, validate_options, usage_headers
 from ..config import DEFAULT_MODEL, RATE_LIMIT
 from ..runtime import browser_manager, limiter, _get_semaphore
-from ..messages import format_messages_to_prompt, responses_messages
+from ..messages import extract_prompt_and_images, responses_messages
 
 logger = logging.getLogger("virel.webhook")
 router = APIRouter()
@@ -41,7 +41,7 @@ async def responses_endpoint(request: Request):
     require_ready()
     model_name = body.get("model", DEFAULT_MODEL)
     stream = body.get("stream", False)
-    prompt = format_messages_to_prompt(responses_messages(body))
+    prompt, images = extract_prompt_and_images(responses_messages(body))
     if not prompt.strip():
         raise GatewayError(400, "A nonempty text prompt is required.", "empty_prompt")
 
@@ -57,7 +57,7 @@ async def responses_endpoint(request: Request):
             try:
                 async with sem:
                     async with browser_manager.lock:
-                        async for chunk_data in checked_stream(prompt, resp_id, model_name=model_name, batch_size=batch_size):
+                        async for chunk_data in checked_stream(prompt, resp_id, model_name=model_name, batch_size=batch_size, images=images):
                             if isinstance(chunk_data, dict):
                                 delta = chunk_data["delta"]
                             else:
@@ -94,7 +94,7 @@ async def responses_endpoint(request: Request):
         full_text = ""
         async with sem:
             async with browser_manager.lock:
-                async for chunk_data in checked_stream(prompt, resp_id, model_name=model_name, batch_size=batch_size):
+                async for chunk_data in checked_stream(prompt, resp_id, model_name=model_name, batch_size=batch_size, images=images):
                     if isinstance(chunk_data, dict):
                         full_text = chunk_data["text"]
                     else:
