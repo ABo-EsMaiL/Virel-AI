@@ -1,6 +1,4 @@
-<div class="rtl-doc" dir="rtl" lang="ar" style="direction: rtl; text-align: right;">
-
-# Virel Constitution
+# Virel AI Constitution
 
 ## Core Principles
 
@@ -17,7 +15,7 @@
 history كاملة تتنفذ في fresh chat مرة واحدة بأدوارها؛ delta-only يستخدم جلسة خاصة بمعرف واضح. مفيش تبويب سياق مشترك بين العملاء ولا history مزدوجة. clear=false الموروث مش تنفيذ للمبدأ ده لحد مرحلة sessions.
 
 ### V. Private Runtime and Readable Documentation
-جلسة Google والأسرار والملفات المحلية خارج Git وDocker context. مدخلات الملفات والروابط تخضع للحدود والتحقق قبل إتاحة قدراتها. الشرح العربي قصير وواضح RTL؛ هوية Virel مستقلة مع حفظ LICENSE الأصلي.
+جلسة Google والأسرار والملفات المحلية خارج Git وDocker context. مدخلات الملفات والروابط تخضع للحدود والتحقق قبل إتاحة قدراتها. الشرح العربي قصير وواضح بـMarkdown طبيعي؛ هوية Virel AI مستقلة مع حفظ LICENSE الأصلي.
 
 ## Scope and Constraints
 
@@ -25,12 +23,12 @@ history كاملة تتنفذ في fresh chat مرة واحدة بأدوارها
 
 ## Development Workflow
 
-Spec Kit الرسمي: specify → plan → tasks → implement → converge → tests → native client evidence → review → merge/tag. كل مرحلة لها <code dir="ltr" style="unicode-bidi: isolate;">specs/&lt;feature&gt;/</code>. لا يبدأ تنفيذ roadmap كاملة بمجرد كتابة constitution أو plan. main يحتفظ بآخر مرحلة مستقرة؛ GitHub checks وbranch protection يتفعلوا لما repo تبقى موجودة.
+Spec Kit الرسمي: specify → plan → tasks → implement → converge → tests → native client evidence → review → merge/tag. كل مرحلة لها `specs/<feature>/`. لا يبدأ تنفيذ roadmap كاملة بمجرد كتابة constitution أو plan. main يحتفظ بآخر مرحلة مستقرة؛ GitHub checks وbranch protection يتفعلوا لما repo تبقى موجودة.
+
+تعديل 1.0.1: المستخدم اعتمد اسم Virel AI وطلب إزالة div/RTL المضافين؛ أي تعليمات تنسيق قديمة في سجل مرحلة التأسيس تعتبر تاريخية.
 
 ## Governance
 
 القواعد دي تسجيل لمتطلبات المستخدم في تأسيس Virel. أي تغيير جوهري فيها يتشرح للمستخدم ويتوثق بإصدار وتاريخ، مع مراجعة أثره على specs والاختبارات والوثائق. principles الحالية معيار قبول للمراحل القادمة؛ الحالات الموروثة المخالفة مسجلة في تقرير التأسيس، مش اتصلحت لمجرد كتابة القواعد.
 
-**Version**: 1.0.0 | **Ratified**: 2026-10-14 | **Last Amended**: 2026-10-14
-
-</div>
+**Version**: 1.0.1 | **Ratified**: 2026-10-14 | **Last Amended**: 2026-10-14

@@ -1,5 +1,5 @@
 """
-Virel — Google AI Studio Web Session Setup (get_session.py)
+Virel AI — Google AI Studio Web Session Setup (get_session.py)
 
 This script launches a real Chromium browser via Playwright with a persistent
 profile (./runtime/browser-profile). It allows the user to log into Google AI Studio
@@ -26,7 +26,7 @@ from virel.config import CHROME_PROFILE_DIR, SESSION_DATA_PATH, TARGET_URL
 
 async def main():
     print("=" * 65)
-    print("Virel — Google AI Studio Web Hook Setup")
+    print("Virel AI — Google AI Studio Web Hook Setup")
     print("=" * 65)
     print(f"Profile directory: {CHROME_PROFILE_DIR}")
     print(f"Target URL:        {TARGET_URL}")

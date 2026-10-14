@@ -1,4 +1,4 @@
-"""Launch Virel; implementation lives in virel/. Also supports uvicorn app:app."""
+"""Launch Virel AI; implementation lives in virel/. Also supports uvicorn app:app."""
 
 from virel.server import app
 from virel.config import PORT

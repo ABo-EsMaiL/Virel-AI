@@ -1,15 +1,13 @@
-<div class="rtl-doc" dir="rtl" lang="ar" style="direction: rtl; text-align: right;">
+# Feature Specification: تأسيس Virel AI
 
-# Feature Specification: تأسيس Virel
+**Feature Branch**: `001-project-foundation` | **Created**: 2026-10-14 | **Status**: Implemented locally; remote verification pending
 
-**Feature Branch**: <code dir="ltr" style="unicode-bidi: isolate;">001-project-foundation</code> | **Created**: 2026-10-14 | **Status**: Implemented locally; remote verification pending
-
-**Input**: تنظيم نسخة AI Studio كبراند مستقل، نقل المستخدم فقط، RTL، خطة تدريجية وSpec Kit وGit. الاسم المعتمد Virel، والفولدر مستقل؛ Google session الأصلية تفضل مكانها.
+**Input**: تنظيم نسخة AI Studio كبراند مستقل، نقل المستخدم فقط، RTL، خطة تدريجية وSpec Kit وGit. الاسم المعتمد Virel AI، والفولدر مستقل؛ Google session الأصلية تفضل مكانها.
 
 ## User Scenarios & Testing
 
 ### US1 — نسخة مستقلة قابلة للتشغيل (P1)
-كمطور أقدر أشتغل في Virel بدون اعتماد على source الفولدر القديم.
+كمطور أقدر أشتغل في Virel AI بدون اعتماد على source الفولدر القديم.
 
 **Acceptance**: Given الكود المنقول، When نستورد app ونشغّل الاختبارات، Then imports تشير لـvirel والـ١٧ اختبار تنجح. Given مسار تشغيل مختلف، Then env/profile/session مرتبطة بجذر Virel. Given repo، Then بيانات Google وenv الحقيقي غير tracked.
 
@@ -26,7 +24,7 @@
 ## Requirements
 
 - **FR-001**: نقل source المستخدم والاختبارات والتشغيل فقط؛ حفظ LICENSE الأصلي وعدم نسخ private runtime.
-- **FR-002**: rebrand الحزمة والإعدادات والمسارات والـDocker والاختبارات إلى Virel مع حفظ سلوك browser الموروث.
+- **FR-002**: rebrand الحزمة والإعدادات والمسارات والـDocker والاختبارات إلى Virel AI مع حفظ سلوك browser الموروث.
 - **FR-003**: runtime في فولدر متجاهل؛ تحميل env/profile من جذر المشروع؛ login والخادم على نفس profile/session.
 - **FR-004**: docs عربية RTL، code LTR، خريطة ومسار طلب وأمثلة وتقرير حذف وحدود وخطة قصيرة.
 - **FR-005**: تهيئة Spec Kit من الأدوات الرسمية، constitution، branch وسجل محلي وCI workflow.
@@ -42,5 +40,3 @@
 ## Edge Cases and Scope
 
 غياب GitHub URL يمنع الرفع واختبارات Actions البعيدة فقط. بروفايل جديد يحتاج manual Google login؛ نقل القديم تلقائيًا خارج النطاق. viewer اللي يمنع HTML مش هدف إثبات RTL. HTTP/SSE/history/model defects الموروثة موثقة، وتصليحها في مراحلها؛ ولا ملف feature مستقبلي يتخلق فاضي. تغيير UI الحقيقي أو ترقيات provider مش ضمن المرحلة دي.
-
-</div>

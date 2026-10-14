@@ -1,6 +1,6 @@
-# Virel agent instructions
+# Virel AI agent instructions
 
-Virel (Visual Interface Relay) exposes client HTTP protocols through an AI Studio browser session. Do not assume a Google API key or a Google SDK is involved.
+Virel AI (Visual Interface Relay) exposes client HTTP protocols through an AI Studio browser session. Do not assume a Google API key or a Google SDK is involved.
 
 ## Read first
 
@@ -27,6 +27,10 @@ Run `python -m unittest discover -s tests -v`. These are offline HTTP and isolat
 
 Never commit `.env`, `runtime/`, browser profiles, session data, uploads, private debug captures, or backups. Preserve LICENSE attribution. Use VIREL_API_KEY/VIREL_RATE_LIMIT/VIREL_MAX_CONCURRENT; load .env from project root. Do not migrate private Google profiles automatically or share one running profile with another process.
 
+## Usage accounting
+
+Read `docs/usage.md` before adding usage fields. Prefer request-correlated counts reported by the browser UI or its observed generation response; no Google API/SDK dependency is authorized for counting. Word counts are not token counts. Distinguish reported, estimated, and unknown, including per-field provenance for partial observations. Count effective context, preserve request/attempt/session identities, and never report missing cache/thinking/media fields as observed zeros. The current Responses word-count usage is inherited and must be replaced in stage 002; no new counter is implemented by this documentation update.
+
 ## Documentation
 
-All authored Arabic Markdown must have an outer `<div class="rtl-doc" dir="rtl" lang="ar" style="direction: rtl; text-align: right;">`, blank lines around it, and a closing `</div>`. English inline technical identifiers use `<code dir="ltr" style="unicode-bidi: isolate;">`; fenced code blocks have an LTR div wrapper. Keep the VS Code markdown.styles setting and docs/rtl.css. Preserve upstream Spec Kit templates/skills in their original language. Write short Egyptian Arabic explanations; distinguish implemented, offline-tested, live-tested, planned, and unavailable.
+The project brand is Virel AI; keep the Python package virel and VIREL_* environment names stable. Use ordinary Markdown without div wrappers, forced RTL, custom CSS, or direction attributes. The user explicitly requested normal Markdown on 2026-10-14. Preserve upstream Spec Kit templates/skills in their original language. Write clear, concise Arabic explanations; distinguish implemented, offline-tested, live-tested, planned, and unavailable. README is the public project introduction, not an internal task log.
