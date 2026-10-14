@@ -1,0 +1,186 @@
+{
+  "name": "Virel AI - Native text smoke",
+  "active": false,
+  "settings": {},
+  "nodes": [
+    {
+      "id": "manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "text-1",
+      "name": "Chat raw",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gemini-3.8-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "Reply only with VIREL_N8N_OK. Do not add punctuation."
+            }
+          ]
+        },
+        "simplify": false,
+        "jsonOutput": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "text-2",
+      "name": "Chat simplified",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gemini-3.8-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "Reply only with VIREL_N8N_OK. Do not add punctuation."
+            }
+          ]
+        },
+        "simplify": true,
+        "jsonOutput": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "text-3",
+      "name": "Responses raw",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "resource": "text",
+        "operation": "response",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gemini-3.8-flash"
+        },
+        "simplify": false,
+        "options": {},
+        "responses": {
+          "values": [
+            {
+              "type": "text",
+              "role": "user",
+              "content": "Reply only with VIREL_N8N_OK. Do not add punctuation."
+            }
+          ]
+        },
+        "builtInTools": {}
+      }
+    },
+    {
+      "id": "text-4",
+      "name": "Responses simplified",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "resource": "text",
+        "operation": "response",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gemini-3.8-flash"
+        },
+        "simplify": true,
+        "options": {},
+        "responses": {
+          "values": [
+            {
+              "type": "text",
+              "role": "user",
+              "content": "Reply only with VIREL_N8N_OK. Do not add punctuation."
+            }
+          ]
+        },
+        "builtInTools": {}
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Chat raw",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat raw": {
+      "main": [
+        [
+          {
+            "node": "Chat simplified",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat simplified": {
+      "main": [
+        [
+          {
+            "node": "Responses raw",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Responses raw": {
+      "main": [
+        [
+          {
+            "node": "Responses simplified",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

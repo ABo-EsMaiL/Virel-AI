@@ -1,6 +1,6 @@
 # Token usage contract
 
-Target behavior; token accounting is not implemented by this document. The inherited Responses adapter counts words and Chat omits usage. Word counts are not token counts. Stage 002 replaces this behavior.
+Stage 002 implements request-correlated JSON usage from the browser's own GenerateContent response. Native n8n Chat text returned reported counts; see [evidence](../specs/002-n8n-text/evidence.md). Session aggregation and full protocol streaming remain later stages. Word counts are never token counts.
 
 | Level | Record |
 |---|---|
@@ -30,3 +30,9 @@ Store IDs/counts/outcomes in private runtime storage, without prompts, cookies o
 ## Acceptance checks
 
 Multilingual/code/history inputs; current vs stale metadata; JSON vs SSE; incomplete observations; retry/cancel/failure; isolated sessions; media/tools/thinking/cache when those stages implement them.
+
+## Current implementation
+
+`virel/usage.py` observes only browser-generated HTTPS GenerateContent requests tied to the active attempt and matching prompt. Completed metadata is checked against total=input+output. Reasoning is included in output once; cache is an input subset. Absent optional details are omitted. Unknown/inconsistent framing produces null usage. JSON responses carry X-Request-ID, X-Virel-Usage-Source and X-Virel-Usage-Accuracy.
+
+The array-wire framing is an observed website detail and can change. Core counts are accepted only when complete and consistent. The fixture is sanitized, with field meanings checked against [Google's official protobuf source](https://github.com/googleapis/googleapis/blob/master/google/ai/generativelanguage/v1beta/generative_service.proto).

@@ -5,6 +5,8 @@ import uuid
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from ..auth import verify_api_key
+from ..errors import GatewayError
+from ..generation import checked_stream, require_ready, validate_options, usage_headers
 from ..config import DEFAULT_MODEL, RATE_LIMIT
 from ..runtime import browser_manager, limiter, _get_semaphore
 
@@ -16,9 +18,13 @@ router = APIRouter()
 async def legacy_completions(request: Request):
     """Legacy OpenAI /v1/completions endpoint."""
     body = await request.json()
+    validate_options(body)
+    require_ready()
     prompt = body.get("prompt", "")
     if isinstance(prompt, list):
         prompt = " ".join([str(p) for p in prompt])
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise GatewayError(400, "A nonempty text prompt is required.", "empty_prompt")
     model_name = body.get("model", DEFAULT_MODEL)
     batch_size_header = request.headers.get("x-batch-size")
     batch_size = int(batch_size_header) if (batch_size_header and batch_size_header.isdigit()) else None
@@ -29,7 +35,7 @@ async def legacy_completions(request: Request):
     sem = _get_semaphore()
     async with sem:
         async with browser_manager.lock:
-            async for chunk_data in browser_manager.send_prompt_and_stream(str(prompt), batch_size=batch_size):
+            async for chunk_data in checked_stream(str(prompt), chunk_id, model_name=model_name, batch_size=batch_size):
                 if isinstance(chunk_data, dict):
                     full_text = chunk_data["text"]
                 else:
@@ -38,6 +44,7 @@ async def legacy_completions(request: Request):
     return JSONResponse({
         "id": chunk_id,
         "object": "text_completion",
+        "usage": browser_manager.last_usage.chat() if browser_manager.last_usage else None,
         "created": now,
         "model": model_name,
         "choices": [{
@@ -46,4 +53,4 @@ async def legacy_completions(request: Request):
             "logprobs": None,
             "finish_reason": "stop"
         }]
-    })
+    }, headers=usage_headers(chunk_id))

@@ -1,0 +1,137 @@
+[
+  {
+    "node": "Chat raw",
+    "status": "success",
+    "duration_ms": 10946,
+    "token_usage": {
+      "inputTokens": 18,
+      "outputTokens": 136
+    },
+    "output": [
+      {
+        "id": "chatcmpl-6ec72a0631ec",
+        "object": "chat.completion",
+        "created": 1791993717,
+        "model": "gemini-3.8-flash",
+        "usage": {
+          "prompt_tokens": 18,
+          "completion_tokens": 136,
+          "total_tokens": 154,
+          "completion_tokens_details": {
+            "reasoning_tokens": 128
+          }
+        },
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "VIREL_N8N_OK"
+            },
+            "finish_reason": "stop"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "node": "Chat simplified",
+    "status": "success",
+    "duration_ms": 10069,
+    "token_usage": {
+      "inputTokens": 18,
+      "outputTokens": 185
+    },
+    "output": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "VIREL_N8N_OK"
+        },
+        "finish_reason": "stop"
+      }
+    ]
+  },
+  {
+    "node": "Responses raw",
+    "status": "success",
+    "duration_ms": 6442,
+    "token_usage": {
+      "inputTokens": 18,
+      "outputTokens": 160
+    },
+    "output": [
+      {
+        "id": "resp_5bafba7ad83a4c8a",
+        "object": "response",
+        "created_at": 1791993738,
+        "status": "completed",
+        "store": false,
+        "model": "gemini-3.8-flash",
+        "output": [
+          {
+            "type": "message",
+            "id": "msg_fa691ab5d43a44cf",
+            "role": "assistant",
+            "status": "completed",
+            "content": [
+              {
+                "type": "output_text",
+                "annotations": [],
+                "text": "VIREL_N8N_OK"
+              }
+            ]
+          }
+        ],
+        "output_text": "VIREL_N8N_OK",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "VIREL_N8N_OK"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "input_tokens": 18,
+          "output_tokens": 160,
+          "total_tokens": 178,
+          "output_tokens_details": {
+            "reasoning_tokens": 152
+          }
+        }
+      }
+    ]
+  },
+  {
+    "node": "Responses simplified",
+    "status": "success",
+    "duration_ms": 6597,
+    "token_usage": {
+      "inputTokens": 18,
+      "outputTokens": 112
+    },
+    "output": [
+      {
+        "output": [
+          {
+            "type": "message",
+            "id": "msg_66b8be02515f4f54",
+            "role": "assistant",
+            "status": "completed",
+            "content": [
+              {
+                "type": "output_text",
+                "annotations": [],
+                "text": "VIREL_N8N_OK"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

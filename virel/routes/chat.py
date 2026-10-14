@@ -7,6 +7,8 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from ..auth import verify_api_key
+from ..errors import GatewayError, provider_error
+from ..generation import checked_stream, require_ready, validate_options, usage_headers
 from ..config import DEFAULT_MODEL, RATE_LIMIT, ENABLE_SEARCH_GROUNDING
 from ..runtime import browser_manager, limiter, _get_semaphore
 from ..schemas import ChatRequest
@@ -27,7 +29,11 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
             detail={"error": "Server busy — browser tab currently processing another request.", "type": "concurrency_limit"}
         )
 
+    validate_options(await request.json())
+    require_ready()
     prompt, images = extract_prompt_and_images(chat_request.messages)
+    if not prompt.strip() and not images:
+        raise GatewayError(400, "A nonempty text prompt is required.", "empty_prompt")
     chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     now = int(time.time())
     model_name = chat_request.model or DEFAULT_MODEL
@@ -44,46 +50,49 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
 
     logger.info(
         f"Incoming /v1/chat/completions prompt ({len(prompt)} chars, images={len(images)}, batch_size={batch_size}, "
-        f"google_search={'ENABLED' if enable_search else 'DISABLED'}): {repr(prompt[:80])}"
+        f"google_search={'ENABLED' if enable_search else 'DISABLED'})"
     )
 
     async def sse_generator():
-        async with sem:
-            async with browser_manager.lock:
-                first_chunk = {
-                    "id": chunk_id,
-                    "object": "chat.completion.chunk",
-                    "created": now,
-                    "model": model_name,
-                    "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": None}]
-                }
-                yield f"data: {json.dumps(first_chunk, ensure_ascii=False)}\n\n"
+        try:
+            async with sem:
+                async with browser_manager.lock:
+                    first_chunk = {
+                        "id": chunk_id,
+                        "object": "chat.completion.chunk",
+                        "created": now,
+                        "model": model_name,
+                        "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": None}]
+                    }
+                    yield f"data: {json.dumps(first_chunk, ensure_ascii=False)}\n\n"
 
-                async for chunk_data in browser_manager.send_prompt_and_stream(prompt, model_name=model_name, batch_size=batch_size, enable_search=enable_search, images=images):
-                    if isinstance(chunk_data, dict):
-                        delta = chunk_data["delta"]
-                    else:
-                        delta = chunk_data
+                    async for chunk_data in checked_stream(prompt, chunk_id, model_name=model_name, batch_size=batch_size, enable_search=enable_search, images=images):
+                        if isinstance(chunk_data, dict):
+                            delta = chunk_data["delta"]
+                        else:
+                            delta = chunk_data
 
-                    if delta:
-                        chunk = {
-                            "id": chunk_id,
-                            "object": "chat.completion.chunk",
-                            "created": now,
-                            "model": model_name,
-                            "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
-                        }
-                        yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+                        if delta:
+                            chunk = {
+                                "id": chunk_id,
+                                "object": "chat.completion.chunk",
+                                "created": now,
+                                "model": model_name,
+                                "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
+                            }
+                            yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
 
-                done_chunk = {
-                    "id": chunk_id,
-                    "object": "chat.completion.chunk",
-                    "created": now,
-                    "model": model_name,
-                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
-                }
-                yield f"data: {json.dumps(done_chunk, ensure_ascii=False)}\n\n"
-                yield "data: [DONE]\n\n"
+                    done_chunk = {
+                        "id": chunk_id,
+                        "object": "chat.completion.chunk",
+                        "created": now,
+                        "model": model_name,
+                        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+                    }
+                    yield f"data: {json.dumps(done_chunk, ensure_ascii=False)}\n\n"
+                    yield "data: [DONE]\n\n"
+        except GatewayError as exc:
+            yield f"data: {json.dumps({'error': provider_error(exc)})}\n\n"
 
     if chat_request.stream:
         return StreamingResponse(
@@ -99,7 +108,7 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
         full_text = ""
         async with sem:
             async with browser_manager.lock:
-                async for chunk_data in browser_manager.send_prompt_and_stream(prompt, model_name=model_name, batch_size=batch_size, enable_search=enable_search, images=images):
+                async for chunk_data in checked_stream(prompt, chunk_id, model_name=model_name, batch_size=batch_size, enable_search=enable_search, images=images):
                     if isinstance(chunk_data, dict):
                         full_text = chunk_data["text"]
                     else:
@@ -116,11 +125,13 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
             "X-Thinking-Mode": str(browser_manager.active_thinking),
             "X-Final-Status": str(timings.get('state', 'UNKNOWN')),
         }
+        headers.update(usage_headers(chunk_id))
         return JSONResponse({
             "id": chunk_id,
             "object": "chat.completion",
             "created": now,
             "model": model_name,
+            "usage": browser_manager.last_usage.chat() if browser_manager.last_usage else None,
             "choices": [{
                 "index": 0,
                 "message": {

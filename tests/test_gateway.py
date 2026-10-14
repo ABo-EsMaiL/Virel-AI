@@ -27,6 +27,9 @@ class GatewayTests(unittest.TestCase):
         self.addCleanup(self.client.close)
         self.headers = {"Authorization": "Bearer test-key"}
         self.calls = []
+        ready_patch = patch.object(runtime.browser_manager, "is_ready", True)
+        ready_patch.start()
+        self.addCleanup(ready_patch.stop)
 
         async def fake_stream(prompt, **kwargs):
             self.calls.append((prompt, kwargs))

@@ -34,3 +34,7 @@ Read `docs/usage.md` before adding usage fields. Prefer request-correlated count
 ## Documentation
 
 The project brand is Virel AI; keep the Python package virel and VIREL_* environment names stable. Use ordinary Markdown without div wrappers, forced RTL, custom CSS, or direction attributes. The user explicitly requested normal Markdown on 2026-10-14. Preserve upstream Spec Kit templates/skills in their original language. Write concise English public documentation; explain progress to the user in Egyptian Arabic; distinguish implemented, offline-tested, live-tested, planned, and unavailable. README is the public project introduction, not an internal task log.
+
+## n8n acceptance workspace
+
+The user requires every experiment to stay in the existing **Virel AI - Native text smoke** workflow. Preserve its settings, credentials and prior nodes when updating; prefer MCP atomic updates. Never create another test workflow without an explicit request. Keep real workflow/credential IDs in ignored runtime records.

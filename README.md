@@ -12,7 +12,7 @@ Client → Virel AI → Playwright / Chromium → AI Studio
 
 ## Status
 
-Early development. Chat text, image preparation and SSE adapters exist; Responses is partial. Offline checks pass. Native client compatibility, reliable token usage, isolated sessions and additional media capabilities are being developed and verified in stages.
+Early development. Native n8n Chat and Responses text operations pass in raw and simplified modes, with reported request token usage. [Acceptance evidence](specs/002-n8n-text/evidence.md). Image preparation and inherited SSE adapters exist; isolated sessions, full streaming protocols and additional media capabilities remain staged work.
 
 ## Quick start
 
