@@ -1,8 +1,12 @@
 <div class="rtl-doc" dir="rtl" lang="ar" style="direction: rtl; text-align: right;">
 
-# Virel — ڤيريل
+# ڤيريل
 
-**Visual Interface Relay**: وسيط يستقبل طلب HTTP، ينفّذه في واجهة AI Studio عن طريق Chromium، ويرجع الرد للبرنامج اللي طلبه.
+<p dir="ltr" style="direction: ltr; text-align: right;"><strong>Virel — Visual Interface Relay</strong></p>
+
+وسيط يستقبل طلب من برنامجك، ينفّذه في واجهة الموقع من خلال المتصفح، ويرجع الرد للبرنامج اللي طلبه.
+
+<p dir="ltr" style="direction: ltr; text-align: right;">HTTP → Virel → Chromium → AI Studio</p>
 
 ## تبدأ تقرأ منين؟
 
@@ -12,6 +16,7 @@
 | مكان كل حاجة ورحلة الطلب | [خريطة المشروع](docs/architecture.md) |
 | شكل الطلبات وإرسال ملفات من n8n | [المدخلات](docs/client-inputs.md) |
 | اللي اتنقل واتشال وحدود النسخة الحالية | [تقرير التأسيس](docs/foundation-report.md) |
+| حساب التوكنز والـusage المستهدف | [سياسة usage](docs/usage.md) |
 | المهمة الحالية | [المهام](tasks/todo.md) |
 | قواعد أي agent | [AGENTS.md](AGENTS.md) |
 
@@ -62,7 +67,7 @@ python -m unittest discover -s tests -v
 
 المشروع مهيّأ من [Spec Kit الرسمي](https://github.com/github/spec-kit)، CLI إصدار <code dir="ltr" style="unicode-bidi: isolate;">1.2.0</code>، تكامل Codex وPowerShell، وإضافة Git إصدار <code dir="ltr" style="unicode-bidi: isolate;">1.0.1</code>. قواعد المشروع في [.specify/memory/constitution.md](.specify/memory/constitution.md)، ومستندات مرحلة التأسيس في [specs/001-project-foundation](specs/001-project-foundation/spec.md).
 
-افتح Virel كمشروع مستقل في Codex علشان تعليماته ومهاراته المحلية تتقرأ. استخدم <code dir="ltr" style="unicode-bidi: isolate;">$speckit-specify</code> ثم <code dir="ltr" style="unicode-bidi: isolate;">$speckit-plan</code> ثم <code dir="ltr" style="unicode-bidi: isolate;">$speckit-tasks</code> لكل مرحلة؛ التنفيذ بـ<code dir="ltr" style="unicode-bidi: isolate;">$speckit-implement</code> بعد اتفاقنا على نطاقها. استخدام مهارة واحدة ما يأذنّش بتنفيذ باقي المراحل تلقائيًا.
+المحادثة الحالية تفضل مستمرة؛ مش مطلوب شات جديد أو إعادة البداية. لو Codex لسه واقف في فولدر النسخة القديمة، افتح فولدر Virel أو ضيفه لصلاحيات المشروع من الواجهة علشان الشغل القادم يبقى مباشر فيه. Spec Kit مهيّأ بالفعل؛ إنت مش مطلوب منك تثبّته أو تعيد الإعداد. استخدم <code dir="ltr" style="unicode-bidi: isolate;">$speckit-specify</code> ثم <code dir="ltr" style="unicode-bidi: isolate;">$speckit-plan</code> ثم <code dir="ltr" style="unicode-bidi: isolate;">$speckit-tasks</code> لكل مرحلة؛ التنفيذ بـ<code dir="ltr" style="unicode-bidi: isolate;">$speckit-implement</code> بعد اتفاقنا على نطاقها. استخدام مهارة واحدة ما يأذنّش بتنفيذ باقي المراحل تلقائيًا.
 
 العربي متغلف بـ<code dir="ltr" style="unicode-bidi: isolate;">dir=&quot;rtl&quot;</code>، والكود اتجاهه يسار ليمين، ومعاه إعداد VS Code للـMarkdown. الـviewer محتاج يسمح بعرض HTML. أدوات Spec Kit الأصلية بالإنجليزي زي ما نزلت.
 

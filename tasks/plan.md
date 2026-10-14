@@ -11,8 +11,8 @@
 | مرحلة / اسم branch المقترح | نعمل إيه؟ | إثبات القبول |
 |---|---|---|
 | <code dir="ltr" style="unicode-bidi: isolate;">001-project-foundation</code> | اسم مستقل، ملفات مستخدمة، RTL، Spec Kit، Git، CI | ١٧ اختبار محلي + مراجعة نقل الملفات؛ CI البعيد بعد إنشاء repo |
-| <code dir="ltr" style="unicode-bidi: isolate;">002-n8n-text</code> | credential، models، Chat JSON، أخطاء صريحة، readiness وحماية تشخيص الخادم | native Generate a Chat Completion يرجع نص؛ auth/busy/timeout/UI error يتشافوا صح |
-| <code dir="ltr" style="unicode-bidi: isolate;">003-history-sessions</code> | حفظ الأدوار والـhistory، fresh replay، جلسات isolated للـdelta | طلبان مرتبطان يفتكروا صح؛ عميلان ما يشوفوش بعض؛ مفيش history مكرر |
+| <code dir="ltr" style="unicode-bidi: isolate;">002-n8n-text</code> | credential، models، Chat JSON، usage الطلب للنص، أخطاء صريحة، readiness وحماية تشخيص الخادم | native Generate a Chat Completion يرجع نص وusage بمصدر واضح؛ auth/busy/timeout/UI error يتشافوا صح |
+| <code dir="ltr" style="unicode-bidi: isolate;">003-history-sessions</code> | حفظ الأدوار والـhistory، fresh replay، جلسات isolated للـdelta، سجل usage للطلب والجلسة | طلبان مرتبطان يفتكروا صح؛ عميلان ما يشوفوش بعض؛ مفيش history مكرر ولا usage بيتحسب مرتين |
 | <code dir="ltr" style="unicode-bidi: isolate;">004-n8n-vision</code> | image-only وimage+text، URL/base64/binary حسب node، validation وحدود وتنظيف | native image analysis + حالة صورة فقط؛ مدخل غير صالح يرجع خطأ |
 | <code dir="ltr" style="unicode-bidi: isolate;">005-n8n-responses-pdf</code> | Responses JSON مضبوط، PDF مباشر/FileID، upload/list/delete اللازمة | native Model Response بنص وPDF؛ الرد يظهر في node، حذف الملفات يعمل |
 | <code dir="ltr" style="unicode-bidi: isolate;">006-n8n-audio-input</code> | voice/audio multipart وتفريغ وترجمة عند دعم UI والموديل | native Transcribe/Translate من binary معروف؛ الناتج والحجم والمدة صحيحين |
@@ -31,6 +31,10 @@
 
 لو عميل محتاج streaming بدري ننقل المرحلة 013 قبل تكامله. توليد الوسائط يتوقف على اللي **واجهة الحساب والموديل المختار** بيوفروه فعلًا؛ مفيش switch يخلق ميزة غير موجودة. Embeddings/moderation/conversations وأي عمليات إضافية ما تتوصفش مدعومة إلا بعد تنفيذ واختبار مستقل. n8n ملهاش شهادة «كل nodes» لمجرد نجاح النص.
 
+## حساب usage من أول المراحل
+
+[سياسة usage](../docs/usage.md) جزء من قبول المشروع. المرحلة 002 تبدأ عدّ الطلب للنص؛ 003 تربطه بالجلسة؛ كل مرحلة media/tools توسع الحساب لمدخلاتها، و013 تضيف usage النهائي في stream حسب عقد العميل. نفضّل أرقام المصدر الفعلية ونعلن أي تقدير أو نقص؛ ما نستخدمش عدد الكلمات كأنه توكنز.
+
 ## هنستخدم الشاتين إمتى؟
 
 | العميل بيبعت إيه؟ | وضع المتصفح المستهدف |
@@ -47,7 +51,7 @@
 2. Spec Kit Git extension ينشئ branch واحد بالرقم التالي. نحفظ spec/plan/tasks في <code dir="ltr" style="unicode-bidi: isolate;">specs/&lt;branch&gt;/</code>.
 3. تنفيذ واختبارات محلية ثم تجربة node/client حقيقي. نضيف evidence بالحالات الفاشلة والناجحة.
 4. مراجعة diff، PR على GitHub، checks ناجحة، ثم merge في main وtag للنسخة.
-5. نبدأ اللي بعدها. قبل وجود repo، commits وmerge محليين فقط؛ مفيش push اتعمل.
+5. نبدأ اللي بعدها. التأسيس اترفع على [Virel-AI](https://github.com/ABo-EsMaiL/Virel-AI)، وchecks التأسيس نجحت على GitHub. أي تحديث له evidence وإصدار واضح.
 
 قوالب العمل من [Spec Kit الرسمي](https://github.com/github/spec-kit). native PDF وأنواع رسائل Model Response موثقة في [n8n Text operations](https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-langchain.openai/text-operations/). Codex له متطلبات Responses نختبرها في [إعدادات Codex](https://learn.chatgpt.com/docs/config-file/config-reference)، وClaude Code له [متطلبات gateway](https://code.claude.com/docs/en/llm-gateway-protocol)؛ تشابه JSON لوحده مش اختبار توافق.
 
