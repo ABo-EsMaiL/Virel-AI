@@ -16,4 +16,4 @@
 - [x] T009 Create uniquely identified inactive native n8n workflows/credential without changing existing entries.
 - [x] T010 Execute actual Chat Completion and current Responses text, raw/simplified, and check errors/catalog.
 - [x] T011 Publish sanitized fixtures/evidence; keep secret files ignored.
-- [ ] T012 Converge/review/checks, PR, merge/tag only after acceptance.
+- [x] T012 Converge/review/checks, PR, merge/tag only after acceptance.

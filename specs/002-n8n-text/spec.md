@@ -1,6 +1,6 @@
 # Feature Specification: Native n8n text
 
-**Branch**: `002-n8n-text` | **Created**: 2026-10-14 | **Status**: In progress
+**Branch**: `002-n8n-text` | **Created**: 2026-10-14 | **Status**: Accepted — native text scope
 
 ## User Scenarios & Testing
 

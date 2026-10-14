@@ -29,3 +29,7 @@ HTML/RTL formatting originally verified during foundation was removed at the use
 | Custom Responses SSE and incomplete cancellation | 013 / client stages |
 
 The structure supports incremental adapters. Website changes, account limits and model capabilities remain real constraints. Offline tests are not live provider/client certification.
+
+## Stage 002 update
+
+The inherited-gap table records the foundation baseline. Stage 002 repaired default JSON, text-only Responses output, reported request usage, readiness/model verification and protected diagnostics. It replaced the static catalog with the verified current selection. Native n8n Chat and Responses raw/simplified text passed; [stage evidence](../specs/002-n8n-text/evidence.md). History, media safety, tools and full streaming remain deferred.
