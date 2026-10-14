@@ -3,6 +3,7 @@ import asyncio
 from contextlib import aclosing
 import logging
 from .images import prepared_images
+from .files import prepared_pdfs
 from .errors import GatewayError
 from .runtime import browser_manager
 
@@ -53,7 +54,12 @@ async def checked_stream(prompt, request_id, **options):
     text = ""
     outcome = "failed"
     try:
-        async with prepared_images(options.pop("images", [])) as paths:
+        sources = options.pop("images", [])
+        image_sources = [source for source in sources if isinstance(source, str)]
+        pdf_sources = [source for source in sources if isinstance(source, dict)]
+        async with prepared_images(image_sources) as image_paths, prepared_pdfs(pdf_sources) as pdf_paths:
+            images, pdfs = iter(image_paths), iter(pdf_paths)
+            paths = [next(pdfs) if isinstance(source, dict) else next(images) for source in sources]
             async with aclosing(browser_manager.send_prompt_and_stream(prompt, request_id=request_id, images=paths, **options)) as stream:
                 async for item in stream:
                     current = item.get("text", "") if isinstance(item, dict) else item

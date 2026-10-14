@@ -35,9 +35,10 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
             raw.close()
             raise
 
-def _fetch_https(url):
+def _fetch_https(url, *, max_bytes=None, accept="image/png,image/jpeg,image/webp", kind="image"):
+    max_bytes = MAX_IMAGE_BYTES if max_bytes is None else max_bytes
     if not isinstance(url, str) or any(ord(char) < 33 or ord(char) == 127 for char in url):
-        raise GatewayError(400, 'Invalid public image URL.', 'invalid_image_url')
+        raise GatewayError(400, 'Invalid public media URL.', 'invalid_'+kind+'_url')
     try:
         parsed = urlsplit(url)
         if parsed.scheme != 'https' or not parsed.hostname or parsed.username is not None or parsed.password is not None or parsed.fragment or parsed.port not in (None, 443):
@@ -48,37 +49,37 @@ def _fetch_https(url):
         if not addresses or any(not ipaddress.ip_address(address).is_global or ipaddress.ip_address(address).is_multicast for address in addresses):
             raise ValueError()
     except (ValueError, OSError, UnicodeError):
-        raise GatewayError(400, 'Only public HTTPS image URLs on port 443 are accepted.', 'invalid_image_url') from None
+        raise GatewayError(400, 'Only public HTTPS media URLs on port 443 are accepted.', 'invalid_'+kind+'_url') from None
     connection = _PinnedHTTPSConnection(host, addresses[0])
     try:
         started = time.monotonic()
         target = quote(parsed.path or '/', safe='/%:@!$&()*+,;=-._~')
         if parsed.query:
             target += '?' + quote(parsed.query, safe='/%:@!$&()*+,;=?-._~')
-        connection.request('GET', target, headers={'Accept': 'image/png,image/jpeg,image/webp', 'User-Agent': 'Virel-AI'})
+        connection.request('GET', target, headers={'Accept': accept, 'User-Agent': 'Virel-AI'})
         response = connection.getresponse()
         if 300 <= response.status < 400:
-            raise GatewayError(400, 'Image URL must return the image directly without redirects.', 'invalid_image_url')
+            raise GatewayError(400, 'Media URL must return the media directly without redirects.', 'invalid_'+kind+'_url')
         if response.status != 200:
-            raise GatewayError(502, 'The public image server could not return the image.', 'image_fetch_failed')
+            raise GatewayError(502, 'The public media server could not return the media.', kind+'_fetch_failed')
         length = response.getheader('Content-Length')
-        if length is not None and int(length) > MAX_IMAGE_BYTES:
-            raise GatewayError(413, 'Image exceeds the 5 MiB limit.', 'image_too_large')
+        if length is not None and int(length) > max_bytes:
+            raise GatewayError(413, 'Media exceeds its byte limit.', kind+'_too_large')
         parts, total = [], 0
         while True:
             if time.monotonic() - started > 20:
                 raise TimeoutError()
-            chunk = response.read1(min(65536, MAX_IMAGE_BYTES - total + 1))
+            chunk = response.read1(min(65536, max_bytes - total + 1))
             if not chunk:
                 return b''.join(parts)
             total += len(chunk)
-            if total > MAX_IMAGE_BYTES:
-                raise GatewayError(413, 'Image exceeds the 5 MiB limit.', 'image_too_large')
+            if total > max_bytes:
+                raise GatewayError(413, 'Media exceeds its byte limit.', kind+'_too_large')
             parts.append(chunk)
     except GatewayError:
         raise
     except (OSError, http.client.HTTPException, ValueError):
-        raise GatewayError(502, 'Could not fetch the public image within the allowed limits.', 'image_fetch_failed') from None
+        raise GatewayError(502, 'Could not fetch the public media within the allowed limits.', kind+'_fetch_failed') from None
     finally:
         connection.close()
 

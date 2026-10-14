@@ -326,7 +326,7 @@ class WebHookBrowserManager:
                 self.search_verified = is_off
                 logger.info(f"Google Search Grounding: {'ENABLED' if self.google_search_enabled else 'DISABLED'} | SEARCH VERIFIED = {self.search_verified}")
             else:
-                if await search_toggle.count() > 0:
+                if await remove_btn.count() == 0 and await search_toggle.count() > 0:
                     checked = await search_toggle.first.get_attribute("aria-checked")
                     if checked != "true":
                         logger.info("Enabling Google Search Grounding via toggle button...")
@@ -413,7 +413,7 @@ class WebHookBrowserManager:
             usage = await self.usage_observer.finish(attempt_id)
             self.last_usage = None if self.comparison_skipped else usage
 
-    async def attach_images(self, paths: List[str]) -> bool:
+    async def attach_files(self, paths: List[str]) -> bool:
         """Do not run until all current-request attachment chips are ready."""
         try:
             file_input = self.page.locator('input[type="file"], [data-test-upload-file-input]').first
@@ -433,10 +433,10 @@ class WebHookBrowserManager:
                 if await self.page.evaluate(ready, len(paths)):
                     return True
                 await asyncio.sleep(0.25)
-            logger.warning("Image attachment readiness timed out.")
+            logger.warning("Media attachment readiness timed out.")
             return False
         except Exception as error:
-            logger.warning("Image upload or attachment readiness failed: %s", str(error).splitlines()[0])
+            logger.warning("Media upload or attachment readiness failed (%s).", type(error).__name__)
             return False
 
     async def _generate_in_page(
@@ -519,8 +519,8 @@ class WebHookBrowserManager:
             yield {"error": "[Error: Could not locate chat prompt input in Google AI Studio. Check debug_missing_input.png]"}
             return
 
-        if images and not await self.attach_images(images):
-            yield {"error": "[Error: Image upload could not establish all ready attachments]"}
+        if images and not await self.attach_files(images):
+            yield {"error": "[Error: Media upload could not establish all ready attachments]"}
             return
 
         # 3. Focus, clear, and insert prompt text cleanly via JAVASCRIPT

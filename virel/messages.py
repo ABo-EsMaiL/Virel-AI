@@ -1,13 +1,13 @@
-"""Faithful caller history and supported image source normalization."""
+"""Faithful caller history and supported media source normalization."""
 
 import json
-from typing import List, Tuple
+from typing import Any, List, Tuple
 
 from .errors import GatewayError
 from .schemas import ChatMessage
 
 
-def extract_prompt_and_images(messages: List[ChatMessage]) -> Tuple[str, List[str]]:
+def extract_prompt_and_images(messages: List[ChatMessage]) -> Tuple[str, List[Any]]:
     turns, sources = [], []
     has_text = False
     for message in messages:
@@ -37,13 +37,21 @@ def extract_prompt_and_images(messages: List[ChatMessage]) -> Tuple[str, List[st
                         raise GatewayError(400, "Only default image detail is supported.", "unsupported_parameter")
                     sources.append(info["url"])
                     text_parts.append(f"[Attached image {len(sources)}]")
+                elif part.get("type") == "file":
+                    info = part.get("file")
+                    if message.role != "user":
+                        raise GatewayError(400, "PDFs are accepted only in user messages.", "unsupported_capability")
+                    if not isinstance(info, dict):
+                        raise GatewayError(400, "A PDF file source is required.", "invalid_file")
+                    sources.append(info)
+                    text_parts.append(f"[Attached PDF {sum(isinstance(source, dict) for source in sources)}]")
                 else:
                     raise GatewayError(400, "Unsupported message content type.", "unsupported_capability")
         else:
             raise GatewayError(400, "Message content must be text or supported parts.", "invalid_request")
         turns.append({"role": message.role, "content": "\n".join(text_parts)})
     if sources and not has_text:
-        prompt = "Describe the attached image."
+        prompt = "Describe the attached document." if any(isinstance(source, dict) for source in sources) else "Describe the attached image."
     elif not turns or not any(turn["content"].strip() for turn in turns):
         prompt = ""
     elif len(turns) == 1 and turns[0]["role"] == "user":
@@ -84,6 +92,9 @@ def responses_messages(body):
             if isinstance(content, list) and not legacy:
                 normalized = []
                 for part in content:
+                    if isinstance(part, dict) and part.get("type") == "input_file":
+                        normalized.append({"type": "file", "file": {key: value for key, value in part.items() if key != "type"}})
+                        continue
                     if isinstance(part, dict) and part.get("type") == "input_image":
                         if part.get("file_id"):
                             raise GatewayError(400, "Stored image file IDs are not supported.", "unsupported_capability")

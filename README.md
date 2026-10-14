@@ -35,7 +35,7 @@ POST `/v1/chat/completions` with `Authorization: Bearer <VIREL_API_KEY>`:
 
 Read `choices[0].message.content`. Missing `stream` returns JSON; explicit `stream: true` uses the inherited SSE adapter. Responses text uses POST `/v1/responses` with `{"input":"Hello"}`. Reported usage is returned when observed; unavailable counts remain null.
 
-Native n8n OpenAI Chat 1.8 and Responses 2.3 text passed in raw and simplified modes. Clients own memory: send the complete ordered text history with each request. Virel replays it once in a verified fresh browser chat; it does not store conversations. History is a text transcript, not native provider role enforcement. Full streaming protocols, PDFs/audio/video, image generation and tools remain staged work. AI Studio changes and account limits can affect generation.
+Native n8n OpenAI Chat 1.8 and Responses 2.3 text passed in raw and simplified modes. Clients own memory: send the complete ordered text history with each request. Virel replays it once in a verified fresh browser chat; it does not store conversations. History is a text transcript, not native provider role enforcement. Full streaming protocols, audio/video, image generation and tools remain staged work. AI Studio changes and account limits can affect generation.
 
 ## Image input
 
@@ -48,9 +48,26 @@ Chat user messages accept text and image parts together:
 ]}]}
 ```
 
-Omit the text part for a default image description. Responses uses `input_image` with a string `image_url`. Both accept PNG/JPEG/WebP base64 data URIs or public HTTPS URLs. Limits: 4 still images, 5 MiB and 20 million pixels each; 32 MiB request body. Local paths, redirects, private destinations, file IDs and non-default detail are rejected. Request upload files are removed afterward.
+Omit the text part for a default image description. Responses uses `input_image` with a string `image_url`. Both accept PNG/JPEG/WebP base64 data URIs or public HTTPS URLs. Limits: 4 still images, 5 MiB and 20 million pixels each; 32 MiB request body. Local paths, redirects, private destinations, image file IDs and non-default detail are rejected. Request upload files are removed afterward.
 
 Native n8n **Message a Model 2.3** passed with binary and URL images. Add text and image entries in the same node to send one request. It requires text, so use a neutral description for a picture without a custom question. **Analyze Image** remains unsupported because its automatic output-token limit is not controlled by the browser adapter. Optional UI response comparisons are skipped without voting; ambiguous usage remains null.
+
+## PDF input
+
+Native n8n **Message a Model 2.3** accepts PDF file entries alongside a text question: use Binary File, public HTTPS URL, or File ID from the official **Upload a File** node. Scanned and ordinary PDFs are submitted as original documents through the same browser upload/readiness checks.
+
+Responses file parts use one source:
+
+```json
+{"input":[{"role":"user","content":[
+  {"type":"input_text","text":"Summarize this document."},
+  {"type":"input_file","file_id":"file-<uploaded-id>"}
+]}]}
+```
+
+Alternatively use file_url, or filename plus file_data containing strict base64/data:application/pdf;base64,... . Limits:2 PDFs per request,10 MiB and50 pages each;32 MiB request body. Encrypted or corrupt PDFs and unsafe URLs are rejected. These are gateway limits, not a guarantee of every model's support.
+
+POST /v1/files accepts multipart file and purpose=user_data or assistants. Authenticated list/retrieve/content/delete endpoints are available. Files remain private to this gateway, expire after one hour and are cleaned every60 seconds/startup; expired IDs fail immediately. Storage is bounded at20 files/100 MiB. Configure VIREL_API_KEY to enable stored IDs; request copies are deleted afterward. PDF input does not implement File Search or vector stores.
 
 ## License
 

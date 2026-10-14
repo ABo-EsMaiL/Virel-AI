@@ -1,6 +1,9 @@
 """FastAPI composition and startup/shutdown; no request transformations here."""
 
+import asyncio
 import logging
+from contextlib import suppress
+from .files import prune_files, expiry_loop
 from json import JSONDecodeError
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -14,7 +17,7 @@ from slowapi.errors import RateLimitExceeded
 
 from .config import DEFAULT_MODEL, THINKING_MODE, CHROME_PROFILE_DIR, HEADLESS, PORT, MAX_CONCURRENT, RATE_LIMIT
 from .runtime import browser_manager, limiter, _get_semaphore
-from .routes import chat, responses, completions, system
+from .routes import chat, responses, completions, system, files
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("virel.webhook")
@@ -66,9 +69,16 @@ async def lifespan(app: FastAPI):
     logger.info(f"Port: {PORT} | Max Concurrent: {MAX_CONCURRENT} | Rate Limit: {RATE_LIMIT}")
     logger.info("=" * 65)
     _get_semaphore()
+    await asyncio.to_thread(prune_files)
     await browser_manager.start()
-    yield
-    await browser_manager.stop()
+    cleanup = asyncio.create_task(expiry_loop())
+    try:
+        yield
+    finally:
+        cleanup.cancel()
+        with suppress(asyncio.CancelledError):
+            await cleanup
+        await browser_manager.stop()
     logger.info("Virel AI Gateway stopped.")
 
 
@@ -95,5 +105,5 @@ app.add_middleware(
 
 app.add_middleware(RequestSizeLimit)
 
-for route_module in (chat, responses, completions, system):
+for route_module in (chat, responses, completions, system, files):
     app.include_router(route_module.router)
