@@ -1,163 +1,57 @@
 # Virel AI
 
 [![Checks](https://github.com/ABo-EsMaiL/Virel-AI/actions/workflows/checks.yml/badge.svg)](https://github.com/ABo-EsMaiL/Virel-AI/actions/workflows/checks.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**بوابة HTTP لتنفيذ طلبات الذكاء الاصطناعي من خلال المتصفح.**
+**A browser-backed AI gateway, starting with Google AI Studio.**
 
-Virel AI يستقبل طلبًا من برنامجك، يرسل محتواه إلى واجهة Google AI Studio باستخدام Chromium، ثم يعيد الرد في صيغة يستطيع البرنامج قراءتها. الاتصال بالموديل يتم من خلال واجهة الموقع؛ مفتاح البوابة محلي، وليس مفتاح Gemini API.
+Virel AI accepts HTTP requests, submits them through Chromium, reads the visible response, and returns JSON or SSE. Generation uses the website's interface; the gateway key authenticates your clients, not Google API requests.
 
-الاسم مشتق من **Visual Interface Relay**. المشروع يبدأ بـAI Studio، مع فصل بروتوكولات العملاء عن التحكم في المتصفح لتطوير كل جزء تدريجيًا.
-
-## كيف يعمل؟
-
-```mermaid
-flowchart LR
-    Client[Client / SDK] -->|HTTP request| Gateway[Virel AI / FastAPI]
-    Gateway -->|Browser actions| Browser[Playwright / Chromium]
-    Browser --> Studio[Google AI Studio]
-    Studio -->|Visible response| Browser
-    Browser -->|Response text| Gateway
-    Gateway -->|JSON / SSE| Client
+```text
+Client → Virel AI → Playwright / Chromium → AI Studio
 ```
 
-البوابة تتحقق من الطلب، تجهّز النص والصور، وتستخدم تبويبًا واحدًا لتنفيذ الطلب. أثناء التوليد تقرأ النص من الصفحة؛ ترجع JSON كاملًا، أو أحداث SSE عندما يطلب العميل streaming. المتصفح يحتفظ بتسجيل دخول Google في بروفايل محلي.
+## Status
 
-## حالة المشروع
+Early development. Chat text, image preparation and SSE adapters exist; Responses is partial. Offline checks pass. Native client compatibility, reliable token usage, isolated sessions and additional media capabilities are being developed and verified in stages.
 
-**نسخة تأسيس قيد التطوير.** الهيكل مستقل، والاختبارات المحلية واختبارات GitHub Actions متاحة. توافق العملاء وقدرات الوسائط تُثبت باختبارات حية لكل مرحلة.
+## Quick start
 
-| القدرة | الحالة الحالية |
-|---|---|
-| طلب نص وإرجاع JSON | منفذ؛ عقد HTTP مختبر بردود محاكاة |
-| SSE في Chat Completions | منفذ؛ تركيب الأحداث مختبر محليًا |
-| تجهيز صور في طلبات Chat | منفذ؛ القبول الحي للصورة فقط والصورة مع النص لم يُثبت بعد |
-| Responses | adapter جزئي؛ ليس توافقًا كاملًا مع البروتوكول |
-| حساب التوكنز والجلسات | مخطط؛ عدّ الكلمات الموروث في Responses ليس عدّ توكنز صحيحًا |
-| PDF وصوت وفيديو وأدوات العملاء | مراحل قادمة |
-| n8n وLangChain وLangGraph وCodex | أهداف تكامل؛ ليست قائمة عملاء معتمدين حاليًا |
-
-## البداية السريعة
-
-تحتاج **Python 3.12**، وChromium الخاص بـPlaywright، وحسابًا يستطيع استخدام AI Studio. الأوامر التالية لـPowerShell من جذر المشروع:
+Python 3.12 and an account that can access AI Studio are required.
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements-dev.txt
+python -m pip install -r requirements.txt
 python -m playwright install chromium
 Copy-Item .env.example .env
 ```
 
-عدّل `.env` قبل التشغيل:
-
-| الإعداد | الغرض |
-|---|---|
-| `VIREL_API_KEY` | مفتاح خاص ترسله البرامج إلى البوابة |
-| `DEFAULT_MODEL` | موديل متاح فعلًا في واجهة حسابك |
-| `CHROME_PROFILE_DIR` | مكان بروفايل Google؛ الافتراضي `./runtime/browser-profile` |
-| `CLEAR_CHAT_ON_REQUEST` | ابدأ بـ`true` للطلبات المستقلة |
-
-لتجهيز بروفايل جديد وتسجيل الدخول يدويًا:
-
-```powershell
-python get_session.py
-```
-
-يمكن إعادة استخدام بروفايل موجود بتحديد مساره الكامل في `CHROME_PROFILE_DIR`. اقفل أي نسخة أخرى تستخدم نفس البروفايل قبل تشغيل Virel AI؛ لا يحتاج المشروع نسخ cookies إلى المستودع.
-
-شغّل الخادم محليًا، بعملية وworker واحد:
+Set `VIREL_API_KEY`, an available `DEFAULT_MODEL`, and `CHROME_PROFILE_DIR` in `.env`. To prepare a new Google login, run `python get_session.py`. To reuse an existing profile, set its absolute path and close other processes using it.
 
 ```powershell
 uvicorn app:app --host 127.0.0.1 --port 8001
 ```
 
-- **Base URL:** `http://localhost:8001/v1`
-- **Health:** `http://localhost:8001/health`
-- **Authentication:** `Authorization: Bearer <VIREL_API_KEY>`
+**Base URL:** `http://localhost:8001/v1` · **Auth:** `Authorization: Bearer <VIREL_API_KEY>`
 
-لو n8n يعمل داخل Docker Desktop والبوابة على نفس الجهاز، استخدم `http://host.docker.internal:8001/v1` بدل localhost، مع تشغيل البوابة على عنوان يمكن للحاوية الوصول إليه. الربط ده جزء من اختبار مرحلة n8n؛ الاستماع المحلي الافتراضي أعلاه لا يتيح الوصول من كل بيئات Docker.
-
-## مثال طلب
-
-ده شكل الطلب على السلك؛ العملاء والـnodes الطبيعية هي اللي ستكوّنه في اختبارات التكامل:
-
-```http
-POST /v1/chat/completions HTTP/1.1
-Host: localhost:8001
-Authorization: Bearer <VIREL_API_KEY>
-Content-Type: application/json
-
+```json
 {
-  "messages": [
-    { "role": "user", "content": "اشرح فكرة المشروع في جملة" }
-  ],
+  "messages": [{"role": "user", "content": "Hello"}],
   "stream": false
 }
 ```
 
-النص يرجع في `choices[0].message.content`. يمكن إرسال `model` لموديل متاح في الواجهة؛ تحديد الاسم في الطلب وحده لا يثبت أن اختيار الموديل في المتصفح نجح. مثال الطلب ليس نتيجة تجربة حية على حساب Google.
+POST to `/v1/chat/completions`; read `choices[0].message.content`. Use one worker. Docker clients need a reachable host address; see the [integration guide](docs/client-inputs.md).
 
-## المسارات الحالية
-
-| المسار | الاستخدام |
-|---|---|
-| `POST /v1/chat/completions` | نص وصور Chat؛ JSON أو SSE |
-| `POST /v1/responses` | Responses الجزئي؛ له alias هو `/responses` |
-| `POST /v1/completions` | مسار نص قديم للعملاء الذين يحتاجونه |
-| `GET /v1/models` | كتالوج موروث ثابت، وليس اكتشافًا لقدرات الحساب |
-| `GET /health` | حالة الخادم والمتصفح والإعدادات |
-
-## بنية الكود
-
-```text
-app.py                  نقطة التشغيل
-get_session.py          إعداد تسجيل دخول Google
-virel/
-  routes/               بروتوكولات HTTP
-  schemas.py            عقود المدخلات
-  messages.py           تحويل النص وتجهيز الصور
-  browser.py            التحكم في AI Studio
-  dom.py                استخراج الرد من الصفحة
-  runtime.py            الموارد والتزامن
-  config.py / auth.py   الإعدادات والمصادقة
-tests/                  اختبارات HTTP وDOM ومسارات التشغيل
-docs/                   شرح التصميم والمدخلات والحدود
-specs/                  مواصفات كل مرحلة وخطتها وأدلتها
-tasks/                  الخطة العامة والمتابعة
-runtime/                بيانات تشغيل خاصة، مستبعدة من Git
-```
-
-## الاختبارات والتطوير
+## Development
 
 ```powershell
+python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 
-فيه **17 اختبارًا**: عقود HTTP بردود محاكاة، وقراءة DOM داخل Chromium معزول، وثبات مسارات البروفايل والجلسة عند تغيير فولدر التشغيل. اختبارات CI لا تستخدم حساب Google أو ترسل prompts حقيقية.
+The project uses [GitHub Spec Kit](https://github.com/github/spec-kit), feature branches and regression checks. Private profiles, `.env` and runtime files are excluded from Git. UI changes, account limits and inherited protocol/security gaps still apply; see the [foundation report](docs/foundation-report.md).
 
-المشروع مهيّأ باستخدام [GitHub Spec Kit](https://github.com/github/spec-kit). كل مرحلة لها مواصفات وbranch واختبارات قبول، مع الحفاظ على اختبارات المراحل السابقة. حساب usage سيشمل الطلب والجلسة ومصدر الأرقام ودقتها؛ لن تُعرض الأرقام التقديرية كأنها قياس رسمي.
+[Architecture](docs/architecture.md) · [Roadmap](tasks/plan.md) · [Inputs](docs/client-inputs.md) · [Token usage](docs/usage.md) · [Contributing instructions](AGENTS.md)
 
-## الحدود المعروفة
+## License
 
-- التحكم في الموقع يتأثر بتغير الواجهة وتسجيل الدخول وحدود الحساب والموديل.
-- تحويل history الحالي غير مكتمل؛ وضع الشات الثابت يستخدم تبويبًا مشتركًا وليس جلسات معزولة.
-- أخطاء التوليد وResponses وusage تحتاج استكمالًا قبل اعتمادها لدى العملاء.
-- مدخلات الصور ومسارات التشخيص تحتاج تأمينًا إضافيًا قبل إتاحة الخادم خارج البيئة المحلية.
-- الملف `.env` والبروفايل والجلسات وuploads بيانات خاصة؛ لا تُرفع إلى Git.
-
-## التوثيق
-
-| الدليل | المحتوى |
-|---|---|
-| [خريطة المشروع](docs/architecture.md) | مسؤولية كل ملف ورحلة الطلب |
-| [الخطة](tasks/plan.md) | مراحل التطوير وحالات قبولها |
-| [المدخلات](docs/client-inputs.md) | أشكال الطلبات والملفات والتكامل المستهدف |
-| [سياسة usage](docs/usage.md) | عدّ التوكنز للطلبات والجلسات وحدود القياس |
-| [تقرير التأسيس](docs/foundation-report.md) | ما نُقل وما حُذف والعيوب الموروثة |
-| [قائمة الحذف](docs/cleanup-inventory.md) | سجل التنظيف وأسبابه |
-| [المتابعة](tasks/todo.md) | ما أُنجز والخطوة التالية |
-
-## الترخيص
-
-[MIT](LICENSE). نُسب الترخيص الأصلية محفوظة في الملف.
+[MIT](LICENSE). Original attribution is preserved.

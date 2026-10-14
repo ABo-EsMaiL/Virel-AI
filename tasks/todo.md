@@ -1,16 +1,14 @@
-# متابعة Virel AI
+# Virel AI progress
 
-- [x] اعتماد اسم Virel AI وإنشاء فولدر مستقل.
-- [x] نقل الملفات المستخدمة وتغيير imports/config/Docker والاختبارات.
-- [x] خريطة ملفات وخطة قصيرة؛ التوثيق بقى Markdown طبيعي بناءً على طلب المستخدم.
-- [x] تهيئة Spec Kit الرسمي وتكامل Codex وإضافة Git.
-- [x] مرور ١٧ اختبار محلي بعد النقل.
-- [x] رفع main وbranch التأسيس وtag v0.1.0؛ GitHub checks للتأسيس نجحت.
-- [ ] تفعيل branch protection بحسب إعدادات repo المتاحة.
-- [ ] تجهيز spec المرحلة 002: n8n على Docker عند المستخدم؛ صورة n8n إصدار 2.41.4؛ تأكيد استقرار الحاوية وموديل حساب Google قبل التجربة الحية.
-- [x] إضافة متطلبات usage للطلبات والجلسات ومصدر الأرقام ودقتها للخطة.
-- [x] اعتماد براند Virel AI وإزالة تنسيقات div/RTL المخصصة.
-- [x] اختيار المستخدم: إعادة استخدام بروفايل Google القديم بعد إيقاف النسخة القديمة، بدون نسخه أو حذفه تلقائيًا.
-- [ ] تنفيذ المرحلة 002 وتجربة credential وnative text node.
+- [x] Establish independent source layout and public branding.
+- [x] Initialize official Spec Kit and Git extension.
+- [x] Preserve 17 passing offline checks; publish foundation and branding tags.
+- [x] Publish GitHub repository and pass checks.
+- [x] Restore ordinary Markdown and define usage provenance requirements.
+- [ ] Publish compact English README and English public documentation.
+- [ ] Configure available main-branch protection.
+- [ ] Implement and live-verify stage 002 native n8n text.
 
-المستندات التفصيلية للمرحلة 001 في [specs](../specs/001-project-foundation/tasks.md). الجدول الكامل في [الخطة](plan.md). علامات إنجاز Git والـrender موجودة في evidence الخاصة بالمرحلة؛ ما نعدّش تجهيز workflow نجاح CI بعيد.
+Environment: n8n Docker image 2.41.4, `n8n_ngrok` and `n8n_runners`. User selected reuse of the preceding Google profile after the old instance is closed. The user has authorized starting stage 002.
+
+See the [roadmap](plan.md) and feature artifacts in `specs/`.

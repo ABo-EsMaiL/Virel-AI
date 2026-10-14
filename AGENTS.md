@@ -5,7 +5,7 @@ Virel AI (Visual Interface Relay) exposes client HTTP protocols through an AI St
 ## Read first
 
 - `tasks/plan.md`: staged roadmap. It is planning, not blanket implementation authorization.
-- `tasks/todo.md`: current work. Stage 001 is the foundation; stage 002 is the proposed next feature.
+- `tasks/todo.md`: current work. Stage 001 is the foundation; stage 002 is authorized for implementation.
 - `docs/architecture.md`: actual ownership and request flow.
 - `docs/foundation-report.md`: inherited limits; never claim client compatibility from offline tests.
 - `.specify/memory/constitution.md`: mandatory project principles.
@@ -29,8 +29,8 @@ Never commit `.env`, `runtime/`, browser profiles, session data, uploads, privat
 
 ## Usage accounting
 
-Read `docs/usage.md` before adding usage fields. Prefer request-correlated counts reported by the browser UI or its observed generation response; no Google API/SDK dependency is authorized for counting. Word counts are not token counts. Distinguish reported, estimated, and unknown, including per-field provenance for partial observations. Count effective context, preserve request/attempt/session identities, and never report missing cache/thinking/media fields as observed zeros. The current Responses word-count usage is inherited and must be replaced in stage 002; no new counter is implemented by this documentation update.
+Read `docs/usage.md` before adding usage fields. Prefer request-correlated counts reported by the browser UI or its observed generation response; no Google API/SDK dependency is authorized for counting. Word counts are not token counts. Distinguish reported, estimated, and unknown, including per-field provenance for partial observations. Count effective context, preserve request/attempt/session identities, and never report missing cache/thinking/media fields as observed zeros. The current Responses word-count usage is inherited and must be replaced in stage 002; stage 002 must implement honest current-request accounting.
 
 ## Documentation
 
-The project brand is Virel AI; keep the Python package virel and VIREL_* environment names stable. Use ordinary Markdown without div wrappers, forced RTL, custom CSS, or direction attributes. The user explicitly requested normal Markdown on 2026-10-14. Preserve upstream Spec Kit templates/skills in their original language. Write clear, concise Arabic explanations; distinguish implemented, offline-tested, live-tested, planned, and unavailable. README is the public project introduction, not an internal task log.
+The project brand is Virel AI; keep the Python package virel and VIREL_* environment names stable. Use ordinary Markdown without div wrappers, forced RTL, custom CSS, or direction attributes. The user explicitly requested normal Markdown on 2026-10-14. Preserve upstream Spec Kit templates/skills in their original language. Write concise English public documentation; explain progress to the user in Egyptian Arabic; distinguish implemented, offline-tested, live-tested, planned, and unavailable. README is the public project introduction, not an internal task log.

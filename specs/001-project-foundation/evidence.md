@@ -1,25 +1,18 @@
-# Verification: تأسيس Virel AI
+# Verification: Project foundation
 
-تاريخ التحقق: 2026-10-14. النتائج دي محلية؛ GitHub remote لسه مش موجود.
+Date: 2026-10-14.
 
-| التحقق | النتيجة |
+| Check | Evidence |
 |---|---|
-| unittest من Virel AI | 17/17 PASS: 16 اختبار نقل + اختبار مسارات جديد |
-| path regression | اختبار جديد يشغل import من cwd مؤقت مختلف ويحفظ profile/session/uploads تحت جذر Virel AI |
-| mutation check | عكس شرط profile-relative خلّى الاختبار يفشل؛ source اتردّ واتشغلت المجموعة ونجحت |
-| source carryover review | فرق مصدر النسخة القديمة بعد rebrand محصور في config وsession path وhealth وتشخيص profile؛ browser generation logic زي ما هو؛ نهايات السطور اتوحدت LF ومسافات آخر السطر اتشالت |
-| Python syntax | AST parse لكل الملفات المنقولة نجح |
-| Markdown | 11 مستند عربي: headings/tables/code fences/RTL والروابط الداخلية صحيحة؛ evidence دي المستند رقم 12 |
-| Chromium preview | README والخطة والمدخلات اتعرضوا في browser معزول؛ اتجاه النص RTL والكود LTR، واتراجعت screenshots بصريًا |
-| Git privacy | .env وruntime وfeature.json متجاهَلة؛ source ما فيهش مفاتيح Google أو imports قديمة |
-| Spec Kit | CLI 1.2.0، Codex/PowerShell، Git extension 1.0.1، official branch/spec/plan/tasks scripts نجحت |
-| Google/n8n/عملاء agents | لم يُجرّبوا حي؛ خارج تأسيس المشروع |
-| Docker وGitHub Actions | ملفات التشغيل/CI جاهزة؛ لم تُشغّل بيئة container أو CI بعيد |
+| Offline suite | 17/17: 16 inherited checks and a path regression |
+| Mutation | Reversing relative-profile normalization failed the new check; restored suite passed |
+| Source carryover | Generation logic preserved; config/session/health paths changed; EOL normalized |
+| Syntax | Copied Python files parsed successfully |
+| Original preview | Headings/tables/fences/links and requested RTL/LTR verified in isolated Chromium |
+| Current formatting | User subsequently removed custom direction/CSS; documents use ordinary Markdown |
+| Spec Kit | CLI 1.2.0, Codex/PowerShell, Git extension 1.0.1 |
+| Git | Private runtime ignored; foundation and branding merged/tagged |
+| GitHub | Foundation and branding PR checks passed |
+| Live provider | Not tested during foundation |
 
-## Review result
-
-تغيير bootstrap بيحسن ملكية الملفات والتوثيق من غير تغيير توليد المتصفح. أصل الـLICENSE محفوظ. المفتاح اتغير اسمه عمدًا؛ لازم إعداد .env جديد أو ضبط VIREL_API_KEY في environment. Google profile قديم لم ينتقل. العيوب الموروثة مسجلة في تقرير التأسيس وخطة المراحل؛ التأسيس مش إقرار بأنها اتصلحت.
-
-## Local delivery
-
-commit المصدر ثم commit التوثيق والتحقق على branch المرحلة 001، وبعدها merge محلي في main وtag v0.1.0. GitHub push/CI/branch protection متبقّيين لحد URL repo. أي نجاح بعيد يتسجل لاحقًا في متابعة المشروع.
+The private Google profile was not copied. The user later approved reuse after closing its old process. No token/accounting implementation was claimed by the usage documentation update.
