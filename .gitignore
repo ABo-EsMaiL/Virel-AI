@@ -10,3 +10,15 @@ debug_*.png
 graphify-out/
 
 runtime/
+
+# Local development workspace; the public repository contains runtime sources.
+.agents/
+.specify/
+.github/
+.vscode/
+docs/
+specs/
+tasks/
+tests/
+AGENTS.md
+requirements-dev.txt

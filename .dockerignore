@@ -13,3 +13,12 @@ test_*.py
 tests
 
 runtime/
+
+.agents
+.specify
+.github
+.vscode
+specs
+tasks
+AGENTS.md
+requirements-dev.txt
