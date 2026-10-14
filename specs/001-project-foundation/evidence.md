@@ -9,7 +9,7 @@
 | unittest من Virel | 17/17 PASS: 16 اختبار نقل + اختبار مسارات جديد |
 | path regression | اختبار جديد يشغل import من cwd مؤقت مختلف ويحفظ profile/session/uploads تحت جذر Virel |
 | mutation check | عكس شرط profile-relative خلّى الاختبار يفشل؛ source اتردّ واتشغلت المجموعة ونجحت |
-| source carryover review | فرق مصدر النسخة القديمة بعد rebrand محصور في config وsession path وhealth وتشخيص profile؛ browser generation logic زي ما هو |
+| source carryover review | فرق مصدر النسخة القديمة بعد rebrand محصور في config وsession path وhealth وتشخيص profile؛ browser generation logic زي ما هو؛ نهايات السطور اتوحدت LF ومسافات آخر السطر اتشالت |
 | Python syntax | AST parse لكل الملفات المنقولة نجح |
 | Markdown | 11 مستند عربي: headings/tables/code fences/RTL والروابط الداخلية صحيحة؛ evidence دي المستند رقم 12 |
 | Chromium preview | README والخطة والمدخلات اتعرضوا في browser معزول؛ اتجاه النص RTL والكود LTR، واتراجعت screenshots بصريًا |
