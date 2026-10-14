@@ -1,0 +1,12 @@
+.env
+chrome_profile/
+temp_uploads/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+session_data.json
+debug_*.png
+graphify-out/
+
+runtime/
