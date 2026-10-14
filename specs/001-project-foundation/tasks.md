@@ -1,6 +1,4 @@
-<div class="rtl-doc" dir="rtl" lang="ar" style="direction: rtl; text-align: right;">
-
-# Tasks: تأسيس Virel
+# Tasks: تأسيس Virel AI
 
 المهام دي تخص التأسيس المحلي؛ future roadmap وGitHub remote ليهم متابعة مستقلة.
 
@@ -8,7 +6,7 @@
 
 - [x] T001 توثيق inventory المستخدم واستبعاد private/generated ملفات — FR-001.
 - [x] T002 تجهيز official Spec Kit Codex/PowerShell وGit extension وconstitution — FR-005.
-- [x] T003 Git bootstrap وbranch <code dir="ltr" style="unicode-bidi: isolate;">001-project-foundation</code> — FR-005.
+- [x] T003 Git bootstrap وbranch `001-project-foundation` — FR-005.
 
 ## Phase 2: US1 — نسخ المصدر
 
@@ -29,6 +27,4 @@
 - [x] T012 مراجعة source/paths/ignore/diff ثم commit وmerge/tag محليًا وتسجيل evidence — SC-002/004.
 
 ## Delivery Boundary
-الرفع على GitHub ونجاح CI هناك وbranch protection مستنيين URL repo، ومتسجلين في <code dir="ltr" style="unicode-bidi: isolate;">tasks/todo.md</code>؛ مش علامة فشل لاختبار محلي، ومش مكتملين من مجرد كتابة workflow. تجربة Google الحية ودعم العملاء والمدخلات الجديدة خارج المرحلة.
-
-</div>
+الرفع على GitHub ونجاح CI هناك وbranch protection مستنيين URL repo، ومتسجلين في `tasks/todo.md`؛ مش علامة فشل لاختبار محلي، ومش مكتملين من مجرد كتابة workflow. تجربة Google الحية ودعم العملاء والمدخلات الجديدة خارج المرحلة.

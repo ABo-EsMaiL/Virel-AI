@@ -1,6 +1,6 @@
-# Virel agent instructions
+# Virel AI agent instructions
 
-Virel (Visual Interface Relay) exposes client HTTP protocols through an AI Studio browser session. Do not assume a Google API key or a Google SDK is involved.
+Virel AI (Visual Interface Relay) exposes client HTTP protocols through an AI Studio browser session. Do not assume a Google API key or a Google SDK is involved.
 
 ## Read first
 
@@ -33,4 +33,4 @@ Read `docs/usage.md` before adding usage fields. Prefer request-correlated count
 
 ## Documentation
 
-All authored Arabic Markdown must have an outer `<div class="rtl-doc" dir="rtl" lang="ar" style="direction: rtl; text-align: right;">`, blank lines around it, and a closing `</div>`. English inline technical identifiers use `<code dir="ltr" style="unicode-bidi: isolate;">`; fenced code blocks have an LTR div wrapper. Keep the VS Code markdown.styles setting and docs/rtl.css. Preserve upstream Spec Kit templates/skills in their original language. Write short Egyptian Arabic explanations; distinguish implemented, offline-tested, live-tested, planned, and unavailable.
+The project brand is Virel AI; keep the Python package virel and VIREL_* environment names stable. Use ordinary Markdown without div wrappers, forced RTL, custom CSS, or direction attributes. The user explicitly requested normal Markdown on 2026-10-14. Preserve upstream Spec Kit templates/skills in their original language. Write clear, concise Arabic explanations; distinguish implemented, offline-tested, live-tested, planned, and unavailable. README is the public project introduction, not an internal task log.

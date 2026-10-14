@@ -1,18 +1,16 @@
-<div class="rtl-doc" dir="rtl" lang="ar" style="direction: rtl; text-align: right;">
-
 # تقرير التأسيس والتنضيف
 
-تاريخ التأسيس: 2026-10-14. Virel نسخة مستقلة مشتقة من نسخة AI Studio المنظّفة؛ مش clone أعمى لكل فولدر المشروع القديم.
+تاريخ التأسيس: 2026-10-14. Virel AI نسخة مستقلة مشتقة من نسخة AI Studio المنظّفة؛ مش clone أعمى لكل فولدر المشروع القديم.
 
 ## اللي اتنقل
 
-الكود الفعّال بس: app، get_session، حزمة التشغيل والـroutes، ١٧ اختبار، requirements، Docker، قالب env، ignore rules، وLICENSE بنفس نسبته الأصلية. اتغيّر اسم حزمة <code dir="ltr" style="unicode-bidi: isolate;">msemax</code> لـ<code dir="ltr" style="unicode-bidi: isolate;">virel</code> في imports والاختبارات وDocker، واسم gateway وإصدار البداية لـ<code dir="ltr" style="unicode-bidi: isolate;">0.1.0</code>.
+الكود الفعّال بس: app، get_session، حزمة التشغيل والـroutes، ١٧ اختبار، requirements، Docker، قالب env، ignore rules، وLICENSE بنفس نسبته الأصلية. اتغيّر اسم حزمة `msemax` لـ`virel` في imports والاختبارات وDocker، واسم gateway وإصدار البداية لـ`0.1.0`.
 
-الإعدادات الجديدة: <code dir="ltr" style="unicode-bidi: isolate;">VIREL_API_KEY</code>، <code dir="ltr" style="unicode-bidi: isolate;">VIREL_RATE_LIMIT</code>، <code dir="ltr" style="unicode-bidi: isolate;">VIREL_MAX_CONCURRENT</code>. <code dir="ltr" style="unicode-bidi: isolate;">.env</code> يتقرأ من جذر Virel، وprofile النسبي يتفسر من جذر المشروع، مش cwd. profile وsession/uploads اتجمعوا في <code dir="ltr" style="unicode-bidi: isolate;">runtime/</code>. إعداد تسجيل الدخول والخادم بيشيروا لنفس profile ونفس metadata.
+الإعدادات الجديدة: `VIREL_API_KEY`، `VIREL_RATE_LIMIT`، `VIREL_MAX_CONCURRENT`. `.env` يتقرأ من جذر Virel AI، وprofile النسبي يتفسر من جذر المشروع، مش cwd. profile وsession/uploads اتجمعوا في `runtime/`. إعداد تسجيل الدخول والخادم بيشيروا لنفس profile ونفس metadata.
 
 ## اللي ما اتنقلش
 
-بيانات Google وcookies، <code dir="ltr" style="unicode-bidi: isolate;">.env</code> الحقيقي، uploads القديمة، فيديو/صور/سجلات الفحص، ملفات cache وبيئات Python، اسم حزمة ChatGPT القديم، scripts تشغيل تعتمد على مسارات جهاز بعينه، والوثائق المكررة. <code dir="ltr" style="unicode-bidi: isolate;">__pycache__</code> اللي الاختبارات بتعمله تلقائيًا متجاهَل، مش source.
+بيانات Google وcookies، `.env` الحقيقي، uploads القديمة، فيديو/صور/سجلات الفحص، ملفات cache وبيئات Python، اسم حزمة ChatGPT القديم، scripts تشغيل تعتمد على مسارات جهاز بعينه، والوثائق المكررة. `__pycache__` اللي الاختبارات بتعمله تلقائيًا متجاهَل، مش source.
 
 في تنظيف النسخة السابقة اتشال ١٣١ ملف بحوالي ٢٣٫٨ MB؛ [قائمة الحذف وأسبابه](cleanup-inventory.md) محفوظة كسجل تاريخي. النسخة الأصلية وجلسة دخولها موجودين في مكانهم. نسخة ما قبل التنظيف محفوظة خارج repo، وفيها بيانات خاصة؛ ما ترفعهاش مع المشروع.
 
@@ -38,6 +36,4 @@
 
 ## شكل Git عند تسليم التأسيس
 
-main لتأسيس الأدوات، branch <code dir="ltr" style="unicode-bidi: isolate;">001-project-foundation</code> لنقل المصدر والتوثيق والتحقق، ثم merge محلي وtag <code dir="ltr" style="unicode-bidi: isolate;">v0.1.0</code>. المرحلة 002 لسه ما اتنفذتش. GitHub remote وchecks البعيدة وbranch protection لسه مستنيين repo. نرفع source والوثائق؛ runtime والأسرار متجاهَلة.
-
-</div>
+main لتأسيس الأدوات، branch `001-project-foundation` لنقل المصدر والتوثيق والتحقق، ثم merge محلي وtag `v0.1.0`. المرحلة 002 لسه ما اتنفذتش. GitHub remote وchecks البعيدة وbranch protection لسه مستنيين repo. نرفع source والوثائق؛ runtime والأسرار متجاهَلة.

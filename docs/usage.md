@@ -1,5 +1,3 @@
-<div class="rtl-doc" dir="rtl" lang="ar" style="direction: rtl; text-align: right;">
-
 # حساب التوكنز والـusage
 
 **ده عقد مستهدف للمراحل القادمة، مش counter اتنفّذ بالفعل.** حاليًا Responses بيستخدم عدد الكلمات، وChat مش بيرجع usage. عدد الكلمات مش token count؛ هنصلح ده في المرحلة 002.
@@ -27,13 +25,13 @@
 
 ## الشكل الطبيعي للعميل
 
-Chat Completions: <code dir="ltr" style="unicode-bidi: isolate;">usage.prompt_tokens</code> و<code dir="ltr" style="unicode-bidi: isolate;">usage.completion_tokens</code> و<code dir="ltr" style="unicode-bidi: isolate;">usage.total_tokens</code>. Responses: <code dir="ltr" style="unicode-bidi: isolate;">usage.input_tokens</code> و<code dir="ltr" style="unicode-bidi: isolate;">usage.output_tokens</code> و<code dir="ltr" style="unicode-bidi: isolate;">usage.total_tokens</code>. التفاصيل تتسمى حسب البروتوكول، ونختبر mapping بدون جمع cached/thinking مرتين. نبقي رقم المصدر ومصدره متاحين داخليًا عند اختلاف المعاني بين البروتوكولات؛ أسماء حقول OpenAI لا تحول موديل Gemini إلى موديل OpenAI.
+Chat Completions: `usage.prompt_tokens` و`usage.completion_tokens` و`usage.total_tokens`. Responses: `usage.input_tokens` و`usage.output_tokens` و`usage.total_tokens`. التفاصيل تتسمى حسب البروتوكول، ونختبر mapping بدون جمع cached/thinking مرتين. نبقي رقم المصدر ومصدره متاحين داخليًا عند اختلاف المعاني بين البروتوكولات؛ أسماء حقول OpenAI لا تحول موديل Gemini إلى موديل OpenAI.
 
 في stream، بعض البروتوكولات بتبعث usage في الحدث النهائي أو عند طلبه؛ نطابق عقد كل واحد. لو العميل فصل قبل النهاية، usage known/partial/unknown وحالة canceled منفصلين؛ ما نعدّش deltas كأنها requests ولا نفترض الاستهلاك صفر.
 
 ## الجلسات والـhistory
 
-لو client بيبعث history كاملة في كل request، السياق ده يدخل في قياس الطلب الفعلي كل مرة؛ جمع الاستهلاك عبر الطلبات صحيح. **حجم context الحالي** مش مجموع التاريخ ولا مجموع الاستهلاك. لو browser chat ثابت، نحسب السياق الفعلي اللي اتولد عليه الرد، ونمنع duplication عند إدخال history. لو retry حصل بعد توليد، نسجله كمحاولة مستقلة؛ ما نكرر نفس attempt بسبب قراءة stream أكتر من مرة. Google billing/quota balance شيء منفصل عن telemetry Virel؛ ما ندّعيش معرفته من عداداتنا.
+لو client بيبعث history كاملة في كل request، السياق ده يدخل في قياس الطلب الفعلي كل مرة؛ جمع الاستهلاك عبر الطلبات صحيح. **حجم context الحالي** مش مجموع التاريخ ولا مجموع الاستهلاك. لو browser chat ثابت، نحسب السياق الفعلي اللي اتولد عليه الرد، ونمنع duplication عند إدخال history. لو retry حصل بعد توليد، نسجله كمحاولة مستقلة؛ ما نكرر نفس attempt بسبب قراءة stream أكتر من مرة. Google billing/quota balance شيء منفصل عن telemetry Virel AI؛ ما ندّعيش معرفته من عداداتنا.
 
 ## اختبارات القبول
 
@@ -42,5 +40,3 @@ Chat Completions: <code dir="ltr" style="unicode-bidi: isolate;">usage.prompt_to
 - JSON وstream لنفس fixture، final usage بلا تكرار؛ cancel/failure/retry محفوظين بحالتهم.
 - جلستان مستقلتان؛ مجموع الجلسة معلوم مقابل مقدر/مجهول، وcontext منفصل.
 - media/tools/thinking/cache كل واحد لما مرحلته تتنفذ؛ مفيش أرقام وهمية لإعلان توافق كامل.
-
-</div>
