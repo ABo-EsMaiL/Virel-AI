@@ -87,7 +87,7 @@ class WebHookBrowserManager:
             logger.warning("Please sign into your Google account in the Chromium window.")
             logger.warning("Waiting for login completion...")
             logger.warning("=" * 65)
-            
+
             # Wait up to 3 minutes for user to sign in
             start_wait = time.time()
             while time.time() - start_wait < 180:
@@ -101,7 +101,7 @@ class WebHookBrowserManager:
 
         self.is_ready = True
         logger.info("Google AI Studio web page ready!")
-        
+
         await self.ensure_model(DEFAULT_MODEL)
         await self.ensure_thinking_mode()
         await self.ensure_tools(ENABLE_SEARCH_GROUNDING)
@@ -111,10 +111,10 @@ class WebHookBrowserManager:
         target_model = target_model or DEFAULT_MODEL
         if not target_model or not self.page or self.page.is_closed() or self.is_shutting_down:
             return
-            
+
         norm_target = target_model.lower().replace("gemini-", "").replace("gemini ", "").strip()
         logger.info(f"Target model: '{target_model}'")
-        
+
         try:
             selectors = [
                 'button.model-selector-card',
@@ -128,7 +128,7 @@ class WebHookBrowserManager:
                 '.model-selector mat-select',
                 '[data-test-id="model-selector"]',
             ]
-            
+
             model_el = None
             for sel in selectors:
                 loc = self.page.locator(sel)
@@ -142,7 +142,7 @@ class WebHookBrowserManager:
                         break
                     except Exception:
                         pass
-                        
+
             if not model_el:
                 try:
                     all_selects = self.page.locator('mat-select')
@@ -194,13 +194,13 @@ class WebHookBrowserManager:
                 opt_count = await options.count()
                 available_options = []
                 clicked = False
-                
+
                 for i in range(opt_count):
                     opt = options.nth(i)
                     text = (await opt.inner_text() or "").strip()
                     available_options.append(text)
                     text_lower = text.lower()
-                    if (target_model.lower() in text_lower or 
+                    if (target_model.lower() in text_lower or
                         norm_target in text_lower or
                         (norm_target.split("-")[0] in text_lower and "flash" in text_lower)):
                         await opt.click()
@@ -230,10 +230,10 @@ class WebHookBrowserManager:
         """Ensures the Thinking Mode is set correctly on the current page."""
         if not THINKING_MODE or not self.page or self.page.is_closed() or self.is_shutting_down:
             return
-            
+
         try:
             thinking_select = self.page.locator('mat-select[aria-label="Thinking Level"], mat-select[aria-label*="Thinking" i]')
-            
+
             try:
                 await thinking_select.first.wait_for(state="visible", timeout=6000)
             except Exception:
@@ -247,7 +247,7 @@ class WebHookBrowserManager:
                     logger.info(f"Changing Thinking Level from '{current_thinking}' to '{THINKING_MODE}'...")
                     await thinking_select.first.click()
                     await asyncio.sleep(0.3)
-                    
+
                     options = self.page.locator('mat-option:visible')
                     count = await options.count()
                     clicked = False
@@ -264,7 +264,7 @@ class WebHookBrowserManager:
                             logger.info(f"Thinking Level set to '{text}' | THINKING VERIFIED = true")
                             await asyncio.sleep(0.3)
                             break
-                    
+
                     if not clicked:
                         logger.warning(f"Could not find a Thinking Level option matching '{THINKING_MODE}'. Available: {available}")
                         await self.page.keyboard.press("Escape")
@@ -283,11 +283,11 @@ class WebHookBrowserManager:
             enable_search = ENABLE_SEARCH_GROUNDING
         if not self.page or self.page.is_closed() or self.is_shutting_down:
             return
-            
+
         try:
             remove_btn = self.page.locator('button[aria-label="Remove Grounding with Google Search"]')
             search_toggle = self.page.locator('button[aria-label="Grounding with Google Search"], button[aria-label*="Google Search" i]')
-            
+
             if not enable_search:
                 if await remove_btn.count() > 0:
                     logger.info("Disabling Google Search Grounding via remove button...")
@@ -299,7 +299,7 @@ class WebHookBrowserManager:
                         logger.info("Disabling Google Search Grounding via toggle button...")
                         await search_toggle.first.click()
                         await asyncio.sleep(0.3)
-                        
+
                 is_off = (await remove_btn.count() == 0)
                 if await search_toggle.count() > 0:
                     checked_after = await search_toggle.first.get_attribute("aria-checked")
@@ -412,7 +412,7 @@ class WebHookBrowserManager:
         try:
             has_fatal_error = await self.page.evaluate('''() => {
                 const body = (document.body.innerText || document.body.textContent || '');
-                return body.includes('An internal error has occurred') || 
+                return body.includes('An internal error has occurred') ||
                        body.includes('Failed to generate content') ||
                        body.includes('permission denied');
             }''')
@@ -526,22 +526,22 @@ class WebHookBrowserManager:
             logger.info("Injecting prompt via JavaScript and triggering native events...")
             ta = self.page.locator('textarea[placeholder*="Type something" i], textarea[aria-label*="prompt" i], ms-autosize-textarea textarea, div[contenteditable="true"]').first
             await ta.wait_for(state="visible", timeout=5000)
-            
+
             # Use JS to set the value instantly (avoids Playwright's fill() dropping chars on huge text)
             await ta.evaluate('''(el, text) => {
                 el.value = text;
                 el.dispatchEvent(new Event('input', { bubbles: true }));
                 el.dispatchEvent(new Event('change', { bubbles: true }));
             }''', prompt)
-            
+
             # Settle delay
             await asyncio.sleep(0.1)
-            
+
             # Trigger one native keystroke so Angular/BotGuard registers a trusted event on the non-empty field
             await ta.focus()
             await self.page.keyboard.press("Space")
             await self.page.keyboard.press("Backspace")
-            
+
             await asyncio.sleep(0.4)
         except Exception as e:
             logger.warning(f"Error injecting prompt: {e}")

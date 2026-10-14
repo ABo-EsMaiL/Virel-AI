@@ -86,10 +86,10 @@ async def main():
         print("\n[INFO] The browser is now open. The session is active.")
         print("Please send a test message manually in the browser to observe the network responses.")
         print("When you are done testing, PRESS ENTER in this terminal to save the session and close.")
-        
+
         # Keep the script running until the user presses Enter
         await asyncio.to_thread(input)
-        
+
         session_data = {
             "status": "ready",
             "profile_dir": os.path.abspath(CHROME_PROFILE_DIR),

@@ -64,7 +64,7 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
                         delta = chunk_data["delta"]
                     else:
                         delta = chunk_data
-                        
+
                     if delta:
                         chunk = {
                             "id": chunk_id,

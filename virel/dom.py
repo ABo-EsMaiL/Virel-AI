@@ -134,15 +134,15 @@ FETCH_RESPONSE_STATE = '''(initialCount) => {
 
                     topLevelChunks.forEach(chunk => {
                         if (chunk.closest('ms-thought-chunk, .thought-activity-host')) return;
-                        
+
                         const selectorsToRemove = '.mat-expansion-panel-header, .code-block-header, button, mat-icon, .material-symbols-outlined, ms-citation-chunk, .citation';
-                        
+
                         const hiddenStates = [];
                         chunk.querySelectorAll(selectorsToRemove).forEach(n => {
                             hiddenStates.push({ node: n, display: n.style.display });
                             n.style.display = 'none';
                         });
-                        
+
                         try {
                             const t = (chunk.innerText || '').trim();
                             if (t) {

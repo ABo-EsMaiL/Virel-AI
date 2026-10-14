@@ -100,7 +100,7 @@ async def responses_endpoint(request: Request):
                             delta = chunk_data["delta"]
                         else:
                             delta = chunk_data
-                            
+
                         if delta:
                             chunk = {
                                 "id": resp_id,
