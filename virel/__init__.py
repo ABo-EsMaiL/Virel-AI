@@ -1,1 +1,1 @@
-"""Virel browser gateway: protocols, browser automation, and shared runtime."""
+"""Virel AI browser gateway: protocols, browser automation, and shared runtime."""

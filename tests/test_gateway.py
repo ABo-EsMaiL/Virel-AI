@@ -125,7 +125,7 @@ class GatewayTests(unittest.TestCase):
     def test_health_without_browser(self):
         response = self.client.get("/health")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["gateway"], "Virel (AIStudio Web Hook)")
+        self.assertEqual(response.json()["gateway"], "Virel AI (AIStudio Web Hook)")
 
     def test_models_have_no_chatgpt_leftovers(self):
         response = self.client.get("/v1/models", headers=self.headers)

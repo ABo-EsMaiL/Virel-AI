@@ -43,8 +43,8 @@ async def health_check():
     has_session = os.path.exists(SESSION_DATA_PATH)
     return {
         "status": "ok",
-        "gateway": "Virel (AIStudio Web Hook)",
-        "version": "0.1.0",
+        "gateway": "Virel AI (AIStudio Web Hook)",
+        "version": "0.1.1",
         "browser_ready": browser_manager.is_ready,
         "session_file_exists": has_session,
         "headless": HEADLESS,

@@ -18,7 +18,7 @@ logger = logging.getLogger("virel.webhook")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=" * 65)
-    logger.info("Starting Virel — Google AI Studio Web Hook Gateway")
+    logger.info("Starting Virel AI — Google AI Studio Web Hook Gateway")
     logger.info(f"Default Model: {DEFAULT_MODEL} | Thinking: {THINKING_MODE}")
     logger.info(f"Profile: {CHROME_PROFILE_DIR} | Headless: {HEADLESS}")
     logger.info(f"Port: {PORT} | Max Concurrent: {MAX_CONCURRENT} | Rate Limit: {RATE_LIMIT}")
@@ -27,13 +27,13 @@ async def lifespan(app: FastAPI):
     await browser_manager.start()
     yield
     await browser_manager.stop()
-    logger.info("Virel Gateway stopped.")
+    logger.info("Virel AI Gateway stopped.")
 
 
 app = FastAPI(
-    title="Virel — Google AI Studio Web Hook Gateway",
-    description="High-Performance OpenAI-Compatible API Gateway for Google AI Studio Web Interface",
-    version="0.1.0",
+    title="Virel AI — Google AI Studio Web Hook Gateway",
+    description="Browser-backed HTTP gateway for AI Studio; client compatibility under development",
+    version="0.1.1",
     lifespan=lifespan
 )
 
