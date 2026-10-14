@@ -1,0 +1,13 @@
+services:
+  virel-api:
+    build: .
+    ports:
+      - "${PORT:-8001}:${PORT:-8001}"
+    volumes:
+      - ./runtime:/app/runtime
+    env_file:
+      - .env
+    environment:
+      CHROME_PROFILE_DIR: /app/runtime/browser-profile
+      HEADLESS: "true"
+    restart: unless-stopped

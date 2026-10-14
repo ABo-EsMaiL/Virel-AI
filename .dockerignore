@@ -1,0 +1,15 @@
+.env
+chrome_profile
+temp_uploads
+__pycache__
+**/__pycache__
+.venv
+venv
+.git
+session_data.json
+debug_*.png
+docs
+test_*.py
+tests
+
+runtime/
