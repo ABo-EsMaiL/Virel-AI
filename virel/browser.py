@@ -5,13 +5,23 @@ import json
 import logging
 import re
 import time
+import uuid
+from contextlib import aclosing
 from typing import AsyncGenerator, List, Optional, Union
 from playwright.async_api import async_playwright, BrowserContext, Page
 
-from .config import (CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, ENABLE_SEARCH_GROUNDING, CLEAR_CHAT_ON_REQUEST, TARGET_URL)
+from .config import (RUNTIME_DIR, CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, ENABLE_SEARCH_GROUNDING, CLEAR_CHAT_ON_REQUEST, TARGET_URL)
 from .dom import FETCH_RESPONSE_STATE
+from .usage import BrowserUsageObserver
 
 logger = logging.getLogger("virel.webhook")
+
+
+def model_matches(label, target):
+    def normalize(value):
+        return re.sub(r"[\s_-]+", " ", value.lower()).strip()
+    expected = normalize(target)
+    return any(normalize(line).removeprefix("chat with ") == expected for line in label.splitlines())
 
 
 class WebHookBrowserManager:
@@ -29,6 +39,8 @@ class WebHookBrowserManager:
         self.google_search_enabled = False
         self.search_verified = False
         self.last_tool_calls_count = 0
+        self.last_usage = None
+        self.usage_observer = BrowserUsageObserver()
 
     async def start(self):
         logger.info(f"Launching persistent Chromium context from: {CHROME_PROFILE_DIR} (headless={HEADLESS}, start-maximized)")
@@ -60,16 +72,14 @@ class WebHookBrowserManager:
                 url = response.url
                 if any(k in url.lower() for k in ["alkali", "generatecontent", "runprompt", "clients6.google.com", "streamgeneratecontent"]):
                     if response.status >= 400:
-                        try:
-                            body = await response.text()
-                            logger.error(f"[Google Backend Error {response.status}] URL: {url[:80]} | Response Body: {body[:600]}")
-                        except Exception:
-                            logger.error(f"[Google Backend Error {response.status}] URL: {url[:80]}")
+                        logger.error("Google backend response status=%s", response.status)
                     elif "generatecontent" in url.lower() or "runprompt" in url.lower():
                         logger.info(f"[Google Backend Status {response.status}] URL: {url[:80]}")
             except Exception:
                 pass
 
+        self.page.on("request", self.usage_observer.on_request)
+        self.page.on("response", self.usage_observer.on_response)
         self.page.on("response", handle_response)
         self.page.on("pageerror", lambda err: logger.warning(f"[Browser Page Error]: {err}"))
 
@@ -99,7 +109,14 @@ class WebHookBrowserManager:
                     break
                 await asyncio.sleep(2)
 
-        self.is_ready = True
+        prompt_ui = self.page.locator('textarea[aria-label*="prompt" i], textarea[placeholder*="Type" i], textarea[formcontrolname="promptText"]').first
+        try:
+            await prompt_ui.wait_for(state="visible", timeout=8000)
+            self.is_ready = True
+        except Exception:
+            self.is_ready = False
+            logger.warning("AI Studio prompt UI unavailable; authenticated requests will return 503.")
+            return
         logger.info("Google AI Studio web page ready!")
 
         await self.ensure_model(DEFAULT_MODEL)
@@ -112,7 +129,6 @@ class WebHookBrowserManager:
         if not target_model or not self.page or self.page.is_closed() or self.is_shutting_down:
             return
 
-        norm_target = target_model.lower().replace("gemini-", "").replace("gemini ", "").strip()
         logger.info(f"Target model: '{target_model}'")
 
         try:
@@ -177,10 +193,14 @@ class WebHookBrowserManager:
                 except Exception:
                     pass
 
+            if not current_model_before:
+                headings = await self.page.locator("h1, h2").all_text_contents()
+                current_model_before = next((heading for heading in headings if model_matches(heading, target_model)), "")
+
             logger.info(f"Current model before: '{current_model_before}'")
 
-            if current_model_before and (norm_target in current_model_before.lower() or target_model.lower() in current_model_before.lower()):
-                self.active_model = current_model_before
+            if current_model_before and model_matches(current_model_before, target_model):
+                self.active_model = target_model
                 self.model_verified = True
                 logger.info(f"Current model after: '{current_model_before}' | MODEL VERIFIED = true")
                 return
@@ -199,16 +219,13 @@ class WebHookBrowserManager:
                     opt = options.nth(i)
                     text = (await opt.inner_text() or "").strip()
                     available_options.append(text)
-                    text_lower = text.lower()
-                    if (target_model.lower() in text_lower or
-                        norm_target in text_lower or
-                        (norm_target.split("-")[0] in text_lower and "flash" in text_lower)):
+                    if model_matches(text, target_model):
                         await opt.click()
                         clicked = True
                         await asyncio.sleep(0.4)
                         current_model_after = (await model_el.inner_text() or "").strip()
-                        self.active_model = current_model_after
-                        self.model_verified = bool(norm_target in current_model_after.lower() or target_model.lower() in current_model_after.lower())
+                        self.active_model = target_model
+                        self.model_verified = bool(model_matches(current_model_after, target_model))
                         logger.info(f"Current model after: '{current_model_after}' | MODEL VERIFIED = {self.model_verified}")
                         break
 
@@ -220,7 +237,7 @@ class WebHookBrowserManager:
                     logger.info(f"Current model after: '{self.active_model}' | MODEL VERIFIED = false")
             else:
                 self.active_model = current_model_before or target_model
-                self.model_verified = bool(current_model_before and (norm_target in current_model_before.lower() or target_model.lower() in current_model_before.lower()))
+                self.model_verified = bool(current_model_before and model_matches(current_model_before, target_model))
                 logger.info(f"Current model after: '{self.active_model}' | MODEL VERIFIED = {self.model_verified}")
         except Exception as e:
             logger.warning(f"Failed to set Model: {e}")
@@ -397,13 +414,24 @@ class WebHookBrowserManager:
             "tier": f"trigger-driven ({case_count} cases)"
         }
 
-    async def send_prompt_and_stream(
+    async def send_prompt_and_stream(self, prompt, model_name=None, batch_size=None, enable_search=None, images=None, request_id=None):
+        attempt_id = request_id or uuid.uuid4().hex
+        self.last_usage = None
+        self.usage_observer.begin(attempt_id, prompt)
+        try:
+            async with aclosing(self._generate_in_page(prompt, model_name, batch_size, enable_search, images)) as stream:
+                async for item in stream:
+                    yield item
+        finally:
+            self.last_usage = await self.usage_observer.finish(attempt_id)
+
+    async def _generate_in_page(
         self, prompt: str, model_name: Optional[str] = None, batch_size: Optional[int] = None, enable_search: Optional[bool] = None, images: Optional[List[str]] = None
     ) -> AsyncGenerator[Union[dict, str], None]:
         """Injects the prompt (and optional images) into Google AI Studio and yields streaming text deltas."""
         t_req_start = time.time()
         if not self.page or self.page.is_closed() or self.is_shutting_down:
-            yield "[Error: Browser page not initialized or server is shutting down]"
+            yield {"error": "[Error: Browser page not initialized or server is shutting down]"}
             return
 
         # 0. Check if previous turns have a fatal error ('An internal error has occurred' / 'permission denied')
@@ -426,6 +454,10 @@ class WebHookBrowserManager:
         else:
             await self.ensure_model(model_name)
             await self.ensure_thinking_mode()
+
+        if not self.model_verified:
+            yield {"error": "[Error: MODEL_UNAVAILABLE - requested model is not verified]"}
+            return
 
         # Explicitly ensure Google Search Grounding state (default: OFF)
         await self.ensure_tools(enable_search=enable_search)
@@ -484,10 +516,10 @@ class WebHookBrowserManager:
         except Exception as e:
             logger.error(f"Could not locate chat prompt input: {e}")
             try:
-                await self.page.screenshot(path="debug_missing_input.png")
+                await self.page.screenshot(path=f"{RUNTIME_DIR}/debug_missing_input.png")
             except Exception:
                 pass
-            yield "[Error: Could not locate chat prompt input in Google AI Studio. Check debug_missing_input.png]"
+            yield {"error": "[Error: Could not locate chat prompt input in Google AI Studio. Check debug_missing_input.png]"}
             return
 
         # 2.5 Attach images if provided (Vision Multi-Modal Support)
@@ -518,7 +550,7 @@ class WebHookBrowserManager:
 
             if not attached_ok:
                 logger.error("CRITICAL: Failed to attach image to Google AI Studio prompt! Aborting to prevent text-only hallucination.")
-                yield "[Error: Image could not be attached to Google AI Studio prompt. File upload failed.]"
+                yield {"error": "[Error: Image could not be attached to Google AI Studio prompt. File upload failed.]"}
                 return
 
         # 3. Focus, clear, and insert prompt text cleanly via JAVASCRIPT
@@ -563,7 +595,7 @@ class WebHookBrowserManager:
             try:
                 aria_dis = await run_btn.get_attribute("aria-disabled")
                 is_dis = await run_btn.is_disabled()
-                if aria_dis == "false" and not is_dis:
+                if aria_dis != "true" and not is_dis:
                     run_active = True
                     logger.info(f"[+] Run button is ACTIVE after {time.time() - t_wait_start:.2f}s! Ready to execute.")
                     break
@@ -626,7 +658,7 @@ class WebHookBrowserManager:
                 consecutive_js_errors += 1
                 if consecutive_js_errors >= 30:
                     logger.error("JS failed persistently for 30 consecutive attempts. Aborting.")
-                    yield {"delta": "", "text": "[Error: Internal extraction logic failed persistently.]"}
+                    yield {"error": "[Error: Internal extraction logic failed persistently.]"}
                     break
                 await asyncio.sleep(0.15)
                 continue
@@ -642,8 +674,8 @@ class WebHookBrowserManager:
             # Check for fatal or tool call error in AI Studio
             if has_error and not is_running and elapsed > 0.5:
                 err_text = state.get("error_text") or "Google AI Studio encountered an error ('permission denied' / 'internal error')"
-                logger.error(f"Turn ended with an error from Google AI Studio: {err_text}")
-                yield {"delta": "", "text": f"[Error: {err_text}]"}
+                logger.error("AI Studio generation ended with an error.")
+                yield {"error": f"[Error: {err_text}]"}
                 break
 
             # ------------------------------------------------------------------
@@ -661,7 +693,7 @@ class WebHookBrowserManager:
                 else:
                     if elapsed > t_cfg["initial_start_timeout"]:
                         logger.error(f"[{case_count} cases] Generation failed to start within {t_cfg['initial_start_timeout']:.0f}s. State: NO_RESPONSE_STARTED.")
-                        yield {"delta": "", "text": f"[Error: NO_RESPONSE_STARTED - Google AI Studio did not start generating within {t_cfg['initial_start_timeout']:.0f}s]"}
+                        yield {"error": f"[Error: NO_RESPONSE_STARTED - Google AI Studio did not start generating within {t_cfg['initial_start_timeout']:.0f}s]"}
                         break
 
             # ------------------------------------------------------------------
@@ -718,7 +750,7 @@ class WebHookBrowserManager:
             # Loop ended due to hard_ceiling
             if current_state != self.STATE_RESPONSE_COMPLETED:
                 logger.error(f"[{case_count} cases] Hard ceiling reached ({t_cfg['hard_ceiling']:.0f}s). State: {current_state}. Aborting.")
-                yield {"delta": "", "text": f"[Error: HARD_CEILING_TIMEOUT - Request exceeded safe upper bound {t_cfg['hard_ceiling']:.0f}s]"}
+                yield {"error": f"[Error: HARD_CEILING_TIMEOUT - Request exceeded safe upper bound {t_cfg['hard_ceiling']:.0f}s]"}
 
         # ----------------------------------------------------------------------
         # CHECK 2: Response Structure & Completeness Validation
@@ -759,7 +791,7 @@ class WebHookBrowserManager:
 
         if validation_error:
             logger.error(f"[{case_count} cases] [CHECK 2 VALIDATION FAILED] {validation_error}")
-            yield {"delta": "", "text": f"[Error: {validation_error}]"}
+            yield {"error": f"[Error: {validation_error}]"}
 
         # ----------------------------------------------------------------------
         # Detailed Timing Milestones Logging
@@ -847,5 +879,5 @@ class WebHookBrowserManager:
 
         logger.info(
             f"Stream finished in {elapsed_total:.2f}s | chars: {len(prev_text)} | "
-            f"Valid JSON: {is_json}{json_err_msg} | Sample: {repr(prev_text[:60])}"
+            f"Valid JSON: {is_json}{json_err_msg}"
         )

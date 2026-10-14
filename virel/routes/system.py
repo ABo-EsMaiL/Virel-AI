@@ -6,13 +6,13 @@ import time
 from fastapi import APIRouter, Depends
 
 from ..auth import verify_api_key
-from ..config import SESSION_DATA_PATH, CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, CLEAR_CHAT_ON_REQUEST, PORT, RATE_LIMIT
+from ..config import RUNTIME_DIR, SESSION_DATA_PATH, HEADLESS, DEFAULT_MODEL, THINKING_MODE, CLEAR_CHAT_ON_REQUEST, PORT, RATE_LIMIT
 from ..runtime import browser_manager
 
 router = APIRouter()
 
 
-@router.get("/debug/state")
+@router.get("/debug/state", dependencies=[Depends(verify_api_key)])
 async def debug_state():
     if not browser_manager.page or browser_manager.page.is_closed():
         return {"error": "no page"}
@@ -33,7 +33,7 @@ async def debug_state():
             preview: (t.innerText || '').slice(0, 150)
         }));
     }''')
-    await browser_manager.page.screenshot(path="debug_state.png")
+    await browser_manager.page.screenshot(path=f"{RUNTIME_DIR}/debug_state.png")
     return {"body_text": body_text, "turns": turns_info, "html": html_sample}
 
 
@@ -48,7 +48,6 @@ async def health_check():
         "browser_ready": browser_manager.is_ready,
         "session_file_exists": has_session,
         "headless": HEADLESS,
-        "profile_dir": CHROME_PROFILE_DIR,
         "default_model": DEFAULT_MODEL,
         "thinking_mode": THINKING_MODE,
         "active_model": browser_manager.active_model,
@@ -67,13 +66,7 @@ async def health_check():
 async def list_models():
     """Lists supported models in standard OpenAI format."""
     now = int(time.time())
-    models = [
-        "gemini-3.8-flash",
-        "gemini-2.0-flash",
-        "gemini-2.5-flash",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash"
-    ]
+    models = [browser_manager.active_model] if browser_manager.is_ready and browser_manager.model_verified else []
     return {
         "object": "list",
         "data": [
@@ -88,7 +81,7 @@ async def list_models():
     }
 
 
-@router.get("/debug_dom")
+@router.get("/debug_dom", dependencies=[Depends(verify_api_key)])
 async def debug_dom():
     if not browser_manager.page or browser_manager.page.is_closed():
         return {"error": "no page"}
@@ -114,8 +107,8 @@ async def debug_dom():
     return data
 
 
-@router.get("/shutdown")
-@router.post("/shutdown")
+@router.get("/shutdown", dependencies=[Depends(verify_api_key)])
+@router.post("/shutdown", dependencies=[Depends(verify_api_key)])
 async def shutdown_server():
     async def _close_and_exit():
         await asyncio.sleep(0.3)

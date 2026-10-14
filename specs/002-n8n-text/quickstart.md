@@ -6,4 +6,4 @@
 4. Execute native OpenAI Chat Completion (1.8) and Model Response text (2.3), raw/simplified. No Code/HTTP replacement node.
 5. Check known output, structured failures and observed/unavailable usage. Record native node version/model/result separately.
 
-Offline command: python -m unittest discover -s tests -v. Live fixtures/evidence are supplied as implementation proceeds; this is not an assertion they have passed yet.
+Offline command: python -m unittest discover -s tests -v. Both native text operations passed in raw/simplified modes; see [evidence](evidence.md). Run every experiment in the existing **Virel AI - Native text smoke** workflow; preserve settings and credentials with atomic MCP updates.

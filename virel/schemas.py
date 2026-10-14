@@ -13,6 +13,6 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     model: str = DEFAULT_MODEL
     messages: List[ChatMessage]
-    stream: bool = True
+    stream: bool = False
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None

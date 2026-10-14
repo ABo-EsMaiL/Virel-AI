@@ -14,6 +14,9 @@ Virel AI exposes HTTP adapters over one persistent AI Studio browser. The Python
 | `virel/routes/` | Chat, Responses, legacy Completions and system routes |
 | `virel/browser.py` | Browser lifecycle, UI settings, uploads and generation |
 | `virel/dom.py` | JavaScript response extraction and completion state |
+| `virel/generation.py` | Checked generation, supported options and usage provenance |
+| `virel/errors.py` | Provider-readable HTTP errors |
+| `virel/usage.py` | Browser response observation, correlation and token mapping |
 | `virel/runtime.py` | One browser manager, limiter and admission semaphore |
 | `tests/` | Offline HTTP, DOM and path regression checks |
 | `docs/`, `tasks/`, `specs/` | Reference, roadmap, feature contracts and evidence |
@@ -25,7 +28,8 @@ Virel AI exposes HTTP adapters over one persistent AI Studio browser. The Python
 2. An adapter checks auth and admission, converts inputs, and locks the shared browser.
 3. The browser prepares the chat/model, attaches media, fills the prompt and runs generation.
 4. DOM polling reads response text and generation state; successive changes become deltas.
-5. The adapter returns one JSON response or SSE events and releases the lock.
+5. The browser observer correlates completed generation metadata to the active attempt; the generation boundary rejects failures and resets prior counts.
+6. The adapter maps reported usage or null into JSON, or returns the existing SSE format, and releases the lock.
 
 Chat currently drops assistant history; `CLEAR_CHAT_ON_REQUEST=false` shares one conversation. These are inherited limits scheduled for the history/session stage. Do not equate current Responses events with the official Responses protocol.
 
