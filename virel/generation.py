@@ -62,6 +62,8 @@ def validate_options(body):
 
 
 def _browser_error(text):
+    if any(marker in text.lower() for marker in ("quota exceeded", "daily limit of requests", "reached your rate limit")):
+        return GatewayError(429, "AI Studio quota or rate limit reached. Wait for the provider reset; no automatic retry was made.", "upstream_rate_limit")
     if "MODEL_NOT_FOUND" in text:
         return GatewayError(404, "Requested UI model was not found.", "model_not_found")
     if "UNSUPPORTED_MODEL" in text or "UNSUPPORTED_GOOGLE_SEARCH" in text:
@@ -85,6 +87,7 @@ async def checked_stream(prompt, request_id, **options):
     browser_manager.last_timings = {}
     text = ""
     has_image = False
+    has_functions = False
     outcome = "failed"
     try:
         sources = options.pop("images", [])
@@ -102,12 +105,13 @@ async def checked_stream(prompt, request_id, **options):
                     if isinstance(item, dict) and "error" in item:
                         raise _browser_error(str(item["error"]))
                     if isinstance(item, dict):
+                        has_functions |= bool(item.get("function_calls")) and "function_settings" in options
                         has_image |= bool(item.get("image")) and options.get("output_kind") == "image"
                         text = current
                     else:
                         text += item
                     yield item
-        if not text.strip() and not has_image:
+        if not text.strip() and not has_image and not has_functions:
             raise GatewayError(502, "AI Studio returned no response text.", "empty_upstream_response")
         outcome = "completed"
     except (TimeoutError, asyncio.TimeoutError):

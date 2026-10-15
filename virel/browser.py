@@ -12,6 +12,7 @@ from playwright.async_api import async_playwright, BrowserContext, Page
 
 from .config import (RUNTIME_DIR, CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, ENABLE_SEARCH_GROUNDING, ENABLE_URL_CONTEXT, TARGET_URL)
 from .dom import FETCH_RESPONSE_STATE
+from .function_ui import disable_functions, ensure_functions
 from .usage import BrowserUsageObserver
 from .models import MODEL_SELECTOR, MODEL_ROWS, READ_MODEL_ROWS, catalog_from_rows, selected_id, IMAGE_MODEL_ICONS
 from .errors import GatewayError
@@ -128,6 +129,7 @@ class WebHookBrowserManager:
 
         await self.ensure_model(DEFAULT_MODEL)
         await self.ensure_thinking_mode()
+        await disable_functions(self.page)
         await self.ensure_tools(ENABLE_SEARCH_GROUNDING)
         await self.ensure_url_context()
         self.is_ready = self.model_catalog_observed
@@ -379,6 +381,7 @@ class WebHookBrowserManager:
                 logger.warning("Fresh-chat verification failed; refusing to reuse browser context.")
                 return False
             await self.ensure_thinking_mode()
+            await disable_functions(self.page)
             await self.ensure_tools(ENABLE_SEARCH_GROUNDING)
             await self.ensure_url_context()
             return True
@@ -406,7 +409,7 @@ class WebHookBrowserManager:
             "tier": f"trigger-driven ({case_count} cases)"
         }
 
-    async def send_prompt_and_stream(self, prompt, model_name=None, batch_size=None, enable_search=None, images=None, request_id=None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto", image_settings=None):
+    async def send_prompt_and_stream(self, prompt, model_name=None, batch_size=None, enable_search=None, images=None, request_id=None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto", image_settings=None, function_settings=None):
         attempt_id = request_id or uuid.uuid4().hex
         self.last_usage = None
         self.comparison_skipped = False
@@ -414,7 +417,7 @@ class WebHookBrowserManager:
         final_text = ""
         failed = False
         try:
-            async with aclosing(self._generate_in_page(prompt, model_name, batch_size, enable_search, images, reasoning_effort=reasoning_effort, temperature=temperature, output_kind=output_kind, image_size=image_size, image_settings=image_settings)) as stream:
+            async with aclosing(self._generate_in_page(prompt, model_name, batch_size, enable_search, images, reasoning_effort=reasoning_effort, temperature=temperature, output_kind=output_kind, image_size=image_size, image_settings=image_settings, function_settings=function_settings)) as stream:
                 async for item in stream:
                     if isinstance(item, dict):
                         failed |= "error" in item
@@ -455,7 +458,7 @@ class WebHookBrowserManager:
             return False
 
     async def _generate_in_page(
-        self, prompt: str, model_name: Optional[str] = None, batch_size: Optional[int] = None, enable_search: Optional[bool] = None, images: Optional[List[str]] = None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto", image_settings=None
+        self, prompt: str, model_name: Optional[str] = None, batch_size: Optional[int] = None, enable_search: Optional[bool] = None, images: Optional[List[str]] = None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto", image_settings=None, function_settings=None
     ) -> AsyncGenerator[Union[dict, str], None]:
         """Injects the prompt (and optional images) into Google AI Studio and yields streaming text deltas."""
         t_req_start = time.time()
@@ -476,6 +479,13 @@ class WebHookBrowserManager:
         await self.ensure_temperature(temperature)
         if output_kind == "image":
             await ensure_image_settings(self.page, image_size, image_settings)
+
+        if function_settings is not None:
+            await ensure_functions(self.page, function_settings)
+            self.google_search_enabled = False
+            self.search_verified = True
+            self.url_context_enabled = False
+            self.url_context_verified = True
 
         # Preserve the requested/current Google Search state.
         await self.ensure_tools(enable_search=enable_search)
@@ -637,6 +647,7 @@ class WebHookBrowserManager:
         )
 
 
+        function_calls = []
         previous_image_identity = None
         while (time.time() - t_submit) < t_cfg["hard_ceiling"]:
             now = time.time()
@@ -679,13 +690,15 @@ class WebHookBrowserManager:
                     await asyncio.sleep(.15)
                     continue
 
+            if function_settings is not None:
+                function_calls = state.get("function_calls", [])
             current_text = state.get("text", "")
             is_running = state.get("is_running", False)
             is_run_disabled = state.get("is_run_disabled", False)
             button_text = state.get("button_text", "")
             new_model_turn_started = state.get("new_model_turn_started", False)
             has_error = state.get("has_error", False)
-            self.last_tool_calls_count = state.get("tool_calls", 0)
+            self.last_tool_calls_count = len(function_calls) if function_settings is not None else state.get("tool_calls", 0)
 
             if not is_running:
                 comparison = self.page.get_by_text("Which response do you prefer?", exact=True)
@@ -708,7 +721,7 @@ class WebHookBrowserManager:
             # 1. State: NO_RESPONSE_STARTED
             # ------------------------------------------------------------------
             if current_state == self.STATE_NO_RESPONSE_STARTED:
-                if is_running or new_model_turn_started or len(current_text) > 0 or image_ready:
+                if is_running or new_model_turn_started or len(current_text) > 0 or image_ready or function_calls:
                     current_state = self.STATE_RESPONSE_IN_PROGRESS
                     t_turn_detected = now
                     t_last_growth = now
@@ -754,7 +767,7 @@ class WebHookBrowserManager:
                         # Wait stability_duration to allow final DOM flush.
                         # Only settle if we already have text OR if elapsed is > 5.0s.
                         # ------------------------------------------------------------------
-                        if len(current_text) == 0 and not image_ready and elapsed < 5.0:
+                        if len(current_text) == 0 and not image_ready and not function_calls and elapsed < 5.0:
                             stability_start_time = None
                         else:
                             if stability_start_time is None:
@@ -787,6 +800,8 @@ class WebHookBrowserManager:
             if output_kind == "image":
                 output = await read_image_output(self.page, initial_model_count, include_data=True)
                 yield {"delta": "", "text": prev_text, "image": output['data']}
+            elif function_settings is not None and function_calls:
+                yield {"delta": "", "text": prev_text, "function_calls": function_calls}
             elif not trimmed_text:
                 validation_error = "EMPTY_RESPONSE: Model finished generating but no text was captured from DOM."
 

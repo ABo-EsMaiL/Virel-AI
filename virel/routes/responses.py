@@ -6,6 +6,7 @@ import time
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from ..tools import is_tool_request, function_response
 from ..auth import verify_api_key
 from ..errors import GatewayError, provider_error
 from ..generation import checked_stream, require_ready, validate_options, usage_headers, response_model
@@ -35,6 +36,8 @@ async def responses_endpoint(request: Request):
     body = await request.json()
     if not isinstance(body, dict):
         raise GatewayError(400, "Expected a JSON object.", "invalid_request")
+    if is_tool_request(body):
+        return await function_response(body, True, sem)
     generation_options = validate_options(body)
     if body.get("prompt"):
         raise GatewayError(400, "Reusable prompt templates are not supported yet.", "unsupported_capability")
