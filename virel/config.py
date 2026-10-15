@@ -15,7 +15,7 @@ if not os.path.isabs(CHROME_PROFILE_DIR):
 TEMP_UPLOADS_DIR = os.path.join(RUNTIME_DIR, "uploads")
 os.makedirs(TEMP_UPLOADS_DIR, exist_ok=True)
 HEADLESS = os.getenv("HEADLESS", "true").lower() in ("true", "1", "yes")
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gemini-3.8-flash").strip()
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gemini-flash-latest").strip()
 THINKING_MODE = os.getenv("THINKING_MODE", "high").strip().lower()
 ENABLE_SEARCH_GROUNDING = os.getenv("ENABLE_SEARCH_GROUNDING", "false").lower() in ("true", "1", "yes")
 ENABLE_URL_CONTEXT = os.getenv("ENABLE_URL_CONTEXT", "true").lower() in ("true", "1", "yes")

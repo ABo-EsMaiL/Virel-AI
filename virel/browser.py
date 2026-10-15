@@ -251,7 +251,7 @@ class WebHookBrowserManager:
         except Exception:
             logger.warning("Thinking level could not be verified.")
         if effort is not None and not self.thinking_verified:
-            raise GatewayError(400, "Requested thinking level is unavailable for this UI model.", "unsupported_parameter")
+            raise GatewayError(400, "Requested thinking level is unavailable for this UI model.", "unsupported_parameter", param="reasoning_effort")
 
     async def ensure_temperature(self, temperature=None):
         self.active_temperature = None
@@ -259,7 +259,7 @@ class WebHookBrowserManager:
         control = self.page.locator('input[aria-label="Temperature"][role="spinbutton"], input[aria-label="Temperature"][type="number"]').first
         if not await control.count() or not await control.is_visible() or not await control.is_enabled():
             if temperature is not None:
-                raise GatewayError(400, "Temperature control is unavailable for this UI model.", "unsupported_parameter")
+                raise GatewayError(400, "Temperature control is unavailable for this UI model.", "unsupported_parameter", param="temperature")
             return
         target = 1 if temperature is None else temperature
         low = await control.get_attribute('aria-valuemin') or await control.get_attribute('min')
@@ -402,7 +402,7 @@ class WebHookBrowserManager:
             "tier": f"trigger-driven ({case_count} cases)"
         }
 
-    async def send_prompt_and_stream(self, prompt, model_name=None, batch_size=None, enable_search=None, images=None, request_id=None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto"):
+    async def send_prompt_and_stream(self, prompt, model_name=None, batch_size=None, enable_search=None, images=None, request_id=None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto", image_settings=None):
         attempt_id = request_id or uuid.uuid4().hex
         self.last_usage = None
         self.comparison_skipped = False
@@ -410,7 +410,7 @@ class WebHookBrowserManager:
         final_text = ""
         failed = False
         try:
-            async with aclosing(self._generate_in_page(prompt, model_name, batch_size, enable_search, images, reasoning_effort=reasoning_effort, temperature=temperature, output_kind=output_kind, image_size=image_size)) as stream:
+            async with aclosing(self._generate_in_page(prompt, model_name, batch_size, enable_search, images, reasoning_effort=reasoning_effort, temperature=temperature, output_kind=output_kind, image_size=image_size, image_settings=image_settings)) as stream:
                 async for item in stream:
                     if isinstance(item, dict):
                         failed |= "error" in item
@@ -451,7 +451,7 @@ class WebHookBrowserManager:
             return False
 
     async def _generate_in_page(
-        self, prompt: str, model_name: Optional[str] = None, batch_size: Optional[int] = None, enable_search: Optional[bool] = None, images: Optional[List[str]] = None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto"
+        self, prompt: str, model_name: Optional[str] = None, batch_size: Optional[int] = None, enable_search: Optional[bool] = None, images: Optional[List[str]] = None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto", image_settings=None
     ) -> AsyncGenerator[Union[dict, str], None]:
         """Injects the prompt (and optional images) into Google AI Studio and yields streaming text deltas."""
         t_req_start = time.time()
@@ -471,7 +471,7 @@ class WebHookBrowserManager:
             await self.ensure_thinking_mode(reasoning_effort)
         await self.ensure_temperature(temperature)
         if output_kind == "image":
-            await ensure_image_settings(self.page, image_size)
+            await ensure_image_settings(self.page, image_size, image_settings)
 
         # Preserve the requested/current Google Search state.
         await self.ensure_tools(enable_search=enable_search)
@@ -664,7 +664,7 @@ class WebHookBrowserManager:
                 image_state = await read_image_output(self.page, initial_model_count)
                 image_ready = image_state['ready']
                 if image_state['broken']:
-                    raise GatewayError(502, "AI Studio returned a broken image preview.", "invalid_upstream_image")
+                    raise GatewayError(502, "AI Studio returned a broken image preview.", "upstream_image_broken")
                 if image_state['identity'] != previous_image_identity:
                     stability_start_time = None
                     previous_image_identity = image_state['identity']
