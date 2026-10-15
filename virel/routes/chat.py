@@ -6,6 +6,7 @@ import time
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from ..tools import is_tool_request, function_response
 from ..auth import verify_api_key
 from ..errors import GatewayError, provider_error
 from ..generation import checked_stream, require_ready, validate_options, usage_headers, response_model
@@ -29,7 +30,10 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
             detail={"error": "Server busy — browser tab currently processing another request.", "type": "concurrency_limit"}
         )
 
-    generation_options = validate_options(await request.json())
+    body = await request.json()
+    if is_tool_request(body):
+        return await function_response(body, False, sem)
+    generation_options = validate_options(body)
     require_ready()
     prompt, images = extract_prompt_and_images(chat_request.messages)
     if not prompt.strip() and not images:

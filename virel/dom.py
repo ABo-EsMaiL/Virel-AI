@@ -122,6 +122,14 @@ FETCH_RESPONSE_STATE = '''(initialCount) => {
             // They were collected backwards, so reverse them to chronological order
             modelTurnsToExtract.reverse();
 
+            // Only typed function components in new model turns are callable output.
+            const functionCalls = newModelTurnStarted ? modelTurns.slice(initialCount).flatMap(turn =>
+                Array.from(turn.querySelectorAll('ms-function-call-chunk')).filter(chunk =>
+                    !chunk.closest('ms-thought-chunk, .thought-activity-host')).map(chunk => ({
+                        name: (chunk.querySelector('.title-text')?.textContent || '').trim().slice(0, 65),
+                        arguments: (chunk.querySelector('pre code')?.textContent || '').slice(0, 65537)
+                    }))) : [];
+
             // Extract text from these model turns
             let fullText = "";
 
@@ -133,7 +141,7 @@ FETCH_RESPONSE_STATE = '''(initialCount) => {
                     });
 
                     topLevelChunks.forEach(chunk => {
-                        if (chunk.closest('ms-thought-chunk, .thought-activity-host')) return;
+                        if (chunk.closest('ms-thought-chunk, .thought-activity-host, ms-function-call-chunk')) return;
 
                         const selectorsToRemove = '.mat-expansion-panel-header, .code-block-header, button, mat-icon, .material-symbols-outlined, ms-citation-chunk, .citation';
 
@@ -166,6 +174,7 @@ FETCH_RESPONSE_STATE = '''(initialCount) => {
             }
 
             return {
+                function_calls: functionCalls,
                 text: fullText.trim(),
                 is_running: isRunning,
                 is_run_disabled: isRunDisabled,

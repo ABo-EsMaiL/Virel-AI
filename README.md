@@ -43,7 +43,15 @@ POST `/v1/chat/completions` with `Authorization: Bearer <VIREL_API_KEY>`:
 
 Read `choices[0].message.content`. Missing `stream` returns JSON; explicit `stream: true` uses the inherited SSE adapter. Responses text uses POST `/v1/responses` with `{"input":"Hello"}`. Reported usage is returned when observed; unavailable counts remain null.
 
-Native n8n OpenAI Chat 1.8 and Responses 2.3 text passed in raw and simplified modes. Clients own memory: send the complete ordered text history with each request. Virel replays it once in a verified fresh browser chat; it does not store conversations. History is a text transcript, not native provider role enforcement. Full streaming protocols, video output and tools remain staged work. AI Studio changes and account limits can affect generation.
+Native n8n OpenAI Chat 1.8 and Responses 2.3 text passed in raw and simplified modes. Clients own memory: send the complete ordered text history with each request. Virel replays it once in a verified fresh browser chat; it does not store conversations. History is a text transcript, not native provider role enforcement. Full streaming protocols and video output remain staged work. AI Studio changes and account limits can affect generation.
+
+## Client tools and agents
+
+Chat Completions and Responses accept client-owned `type:function` tools with `stream:false`. Virel configures AI Studio's actual Function calling UI, returns the model-selected name/JSON arguments, and validates them against the caller schema. Your client executes the tool and sends the complete history, including call IDs and results, in the next request. Virel stores no tool conversations and runs no caller functions.
+
+Use native n8n AI Agent + OpenAI Chat Model + Calculator with agent streaming disabled. Both Chat and Responses adapters support the loop. The installed LangChain/n8n Responses logger labels its own token estimate; Virel still returns the website-reported `usage` in the HTTP response. Choices `auto`, `none`, `required`, and a declared named function are checked before accepting output; they do not promise OpenAI constrained decoding. `parallel_tool_calls:false` permits at most one call.
+
+This first tool stage accepts text history and a reference-free JSON Schema subset: typed objects/properties/required, typed arrays, enum and size/numeric bounds. Native UI declarations carry supported fields; all accepted constraints are checked server-side. Limits:32 functions,8 calls/turn,512KiB request,32KiB/schema,64KiB arguments,24 nesting levels. Unsupported schemas, `strict:true`, built-in tools, tool streaming and media/tool combinations fail explicitly. Function mode temporarily disables incompatible Google Search and URL Context; ordinary requests restore configured defaults.
 
 ## Image input
 
