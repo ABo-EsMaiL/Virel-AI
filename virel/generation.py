@@ -2,6 +2,7 @@
 import asyncio
 from contextlib import aclosing
 import logging
+import math
 from .images import prepared_images
 from .files import prepared_pdfs
 from .config import DEFAULT_MODEL
@@ -26,14 +27,37 @@ def validate_options(body):
     text_options = body.get("text")
     if text_options is not None and text_options != {"format": {"type": "text"}}:
         raise GatewayError(400, "Structured text formatting is not supported yet.", "unsupported_parameter")
-    for name in ("tools", "tool_choice", "conversation", "previous_response_id", "background", "reasoning", "include"):
+    for name in ("tools", "tool_choice", "conversation", "previous_response_id", "background", "include"):
         if body.get(name):
             raise GatewayError(400, f"{name} is not supported in this text stage.", "unsupported_capability")
-    for name in ("temperature", "max_tokens", "max_completion_tokens", "max_output_tokens", "top_p", "response_format"):
+    for name in ("max_tokens", "max_completion_tokens", "max_output_tokens", "top_p", "response_format"):
         if body.get(name) is not None:
             raise GatewayError(400, f"{name} is not implemented by the browser adapter.", "unsupported_parameter")
     if body.get("n", 1) != 1:
         raise GatewayError(400, "Only one completion is supported.", "unsupported_parameter")
+
+    options = {}
+    effort = body.get("reasoning_effort")
+    reasoning = body.get("reasoning")
+    if reasoning is not None:
+        if not isinstance(reasoning, dict):
+            raise GatewayError(400, "reasoning must be an object.", "invalid_request")
+        if set(reasoning) - {"effort", "summary"} or reasoning.get("summary") not in (None, "none"):
+            raise GatewayError(400, "Reasoning summaries and budgets are not implemented.", "unsupported_parameter")
+        nested = reasoning.get("effort")
+        if effort is not None and nested is not None and effort != nested:
+            raise GatewayError(400, "Conflicting reasoning effort fields.", "invalid_request")
+        effort = nested if nested is not None else effort
+    if effort is not None:
+        if not isinstance(effort, str) or effort not in ("low", "medium", "high"):
+            raise GatewayError(400, "Reasoning effort must be low, medium or high.", "unsupported_parameter")
+        options["reasoning_effort"] = effort
+    temperature = body.get("temperature")
+    if temperature is not None:
+        if isinstance(temperature, bool) or not isinstance(temperature, (int, float)) or not 0 <= temperature <= 2 or not math.isfinite(temperature):
+            raise GatewayError(400, "Temperature must be a finite number between 0 and 2.", "invalid_request")
+        options["temperature"] = temperature
+    return options
 
 
 def _browser_error(text):

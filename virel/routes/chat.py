@@ -29,7 +29,7 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
             detail={"error": "Server busy — browser tab currently processing another request.", "type": "concurrency_limit"}
         )
 
-    validate_options(await request.json())
+    generation_options = validate_options(await request.json())
     require_ready()
     prompt, images = extract_prompt_and_images(chat_request.messages)
     if not prompt.strip() and not images:
@@ -65,7 +65,7 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
                     }
                     first_pending = True
 
-                    async for chunk_data in checked_stream(prompt, chunk_id, model_name=model_name, batch_size=batch_size, enable_search=enable_search, images=images):
+                    async for chunk_data in checked_stream(prompt, chunk_id, model_name=model_name, batch_size=batch_size, enable_search=enable_search, images=images, **generation_options):
                         if isinstance(chunk_data, dict):
                             delta = chunk_data["delta"]
                         else:
@@ -114,7 +114,7 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
         full_text = ""
         async with sem:
             async with browser_manager.lock:
-                async for chunk_data in checked_stream(prompt, chunk_id, model_name=model_name, batch_size=batch_size, enable_search=enable_search, images=images):
+                async for chunk_data in checked_stream(prompt, chunk_id, model_name=model_name, batch_size=batch_size, enable_search=enable_search, images=images, **generation_options):
                     if isinstance(chunk_data, dict):
                         full_text = chunk_data["text"]
                     else:

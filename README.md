@@ -77,6 +77,14 @@ Alternatively use file_url, or filename plus file_data containing strict base64/
 
 POST /v1/files accepts multipart file and purpose=user_data or assistants. Authenticated list/retrieve/content/delete endpoints are available. Files remain private to this gateway, expire after one hour and are cleaned every 60 seconds/startup; expired IDs fail immediately. Storage is bounded at 20 files/100 MiB. Configure VIREL_API_KEY to enable stored IDs; request copies are deleted afterward. PDF input does not implement File Search or vector stores.
 
+## Generation controls
+
+Native text requests accept temperature (0–2, subject to the selected UI model) and reasoning effort. Chat uses reasoning_effort; Responses uses reasoning.effort. Missing effort uses THINKING_MODE=high; missing temperature resets an available UI control to1. Unsupported explicit controls return an error before generation.
+
+In the native n8n Responses node, add Reasoning → Effort and set Summary to None; add Temperature separately. No Code or conversion node is needed. Reasoning summaries are not implemented.
+
+ENABLE_URL_CONTEXT=true enables the current model's URL Context tool for links in prompts, alongside Google Search when configured. /health reports actual thinking, temperature and URL-tool verification. Tool availability and URL retrieval still depend on AI Studio and the selected model.
+
 ## Audio input
 
 Native n8n **Transcribe Audio** and **Translate Audio** operations work with ordinary OpenAI credentials pointed at Virel. Pass a binary audio file directly; transcription preserves the spoken language, translation returns English. Both use the AI Studio browser, not an external transcription service.

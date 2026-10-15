@@ -18,7 +18,7 @@ router = APIRouter()
 async def legacy_completions(request: Request):
     """Legacy OpenAI /v1/completions endpoint."""
     body = await request.json()
-    validate_options(body)
+    generation_options = validate_options(body)
     require_ready()
     prompt = body.get("prompt", "")
     if isinstance(prompt, list):
@@ -35,7 +35,7 @@ async def legacy_completions(request: Request):
     sem = _get_semaphore()
     async with sem:
         async with browser_manager.lock:
-            async for chunk_data in checked_stream(str(prompt), chunk_id, model_name=model_name, batch_size=batch_size):
+            async for chunk_data in checked_stream(str(prompt), chunk_id, model_name=model_name, batch_size=batch_size, **generation_options):
                 if isinstance(chunk_data, dict):
                     full_text = chunk_data["text"]
                 else:
