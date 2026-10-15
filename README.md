@@ -25,7 +25,7 @@ Use one worker. For n8n in Docker Desktop, listen on `0.0.0.0` and set its ordin
 
 ## Model selection
 
-GET /v1/models returns the last account-UI observation of selectable general-text model IDs. The ordinary n8n model picker uses those IDs directly. Paid, disabled and unimplemented output categories are excluded. Unknown capability fields remain null; appearing in the list does not guarantee quota or every modality.
+GET /v1/models returns the last account-UI observation of selectable text and image model IDs. The ordinary n8n model picker uses those IDs directly. Paid, disabled and unimplemented output categories are excluded; each route checks the model category. Unknown capability fields remain null; appearing in the list does not guarantee quota or every modality.
 
 Send the exact model ID in a request. Virel verifies the browser selection before submitting; it never falls back to another model. Unknown IDs return404, unavailable selections503, unsupported categories400. Responses disclose actual model and requested_model separately when a UI alias resolves to a concrete model. The documented audio whisper-1 compatibility alias remains unchanged.
 
@@ -43,7 +43,7 @@ POST `/v1/chat/completions` with `Authorization: Bearer <VIREL_API_KEY>`:
 
 Read `choices[0].message.content`. Missing `stream` returns JSON; explicit `stream: true` uses the inherited SSE adapter. Responses text uses POST `/v1/responses` with `{"input":"Hello"}`. Reported usage is returned when observed; unavailable counts remain null.
 
-Native n8n OpenAI Chat 1.8 and Responses 2.3 text passed in raw and simplified modes. Clients own memory: send the complete ordered text history with each request. Virel replays it once in a verified fresh browser chat; it does not store conversations. History is a text transcript, not native provider role enforcement. Full streaming protocols, video, audio output, image generation and tools remain staged work. AI Studio changes and account limits can affect generation.
+Native n8n OpenAI Chat 1.8 and Responses 2.3 text passed in raw and simplified modes. Clients own memory: send the complete ordered text history with each request. Virel replays it once in a verified fresh browser chat; it does not store conversations. History is a text transcript, not native provider role enforcement. Full streaming protocols, audio/video output and tools remain staged work. AI Studio changes and account limits can affect generation.
 
 ## Image input
 
@@ -59,6 +59,20 @@ Chat user messages accept text and image parts together:
 Omit the text part for a default image description. Responses uses `input_image` with a string `image_url`. Both accept PNG/JPEG/WebP base64 data URIs or public HTTPS URLs. Limits: 4 still images, 5 MiB and 20 million pixels each; 128 MiB request body by default. Local paths, redirects, private destinations, image file IDs and non-default detail are rejected. Request upload files are removed afterward.
 
 Native n8n **Message a Model 2.3** passed with binary and URL images. Add text and image entries in the same node to send one request. It requires text, so use a neutral description for a picture without a custom question. **Analyze Image** remains unsupported because its automatic output-token limit is not controlled by the browser adapter. Optional UI response comparisons are skipped without voting; ambiguous usage remains null.
+
+## Image generation and editing
+
+Native n8n **Generate an Image** returns the actual PNG as binary data. Choose By ID and use an available image model such as `gemini-3.1-flash-lite-image` (Nano Banana 2 Lite). POST `/v1/images/generations` accepts:
+
+```json
+{"model":"gemini-3.1-flash-lite-image","prompt":"A red circle on white"}
+```
+
+Native **Edit an Image** accepts the original binary directly. Select `gpt-image-1`, Size=Auto and Quality=Auto. This is an explicit Virel compatibility selector for `DEFAULT_IMAGE_MODEL`, not GPT execution: n8n 2.3 hides the necessary edit input fields for Gemini IDs. Direct HTTP callers can use the actual Gemini ID with multipart `image` or `image[]` and `prompt` at `/v1/images/edits`.
+
+Both return one original PNG in `data[0].b64_json`, actual/requested model metadata and reported usage when available. Image-only responses are supported; screenshots and input images are never returned as generated output. Defaults:20 MiB output (`VIREL_MAX_GENERATED_IMAGE_MB`),20 million pixels; edit inputs retain the image-input limits above.
+
+Supported options: `n=1`, `response_format=b64_json`, `quality=auto`, and `size=auto` or `1024x1024`. Exact square requests are verified against the returned dimensions. URL results, masks, quality tiers, transparency and other formats are unsupported. AI Studio can refuse an image request (including Image recitation block); Virel returns an error without substituting an older image. Available image models may lack Search/URL tools, and website/account limits still apply.
 
 ## PDF input
 

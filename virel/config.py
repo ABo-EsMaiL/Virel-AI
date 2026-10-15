@@ -41,3 +41,6 @@ MAX_AUDIO_BYTES = positive_setting('VIREL_MAX_AUDIO_MB', 25) * 1024 * 1024
 MAX_VIDEO_BYTES = positive_setting("VIREL_MAX_VIDEO_MB", 50) * 1024 * 1024
 MAX_VIDEOS = positive_setting("VIREL_MAX_VIDEOS", 2)
 MAX_VIDEO_PIXELS = positive_setting("VIREL_MAX_VIDEO_PIXELS", 20_000_000)
+
+DEFAULT_IMAGE_MODEL = os.getenv("DEFAULT_IMAGE_MODEL", "gemini-3.1-flash-lite-image").strip()
+MAX_GENERATED_IMAGE_BYTES = positive_setting("VIREL_MAX_GENERATED_IMAGE_MB", 20) * 1024 * 1024

@@ -82,25 +82,10 @@ def _fetch_https(url, *, max_bytes=None, accept="image/png,image/jpeg,image/webp
     finally:
         connection.close()
 
-def _prepare_one(source, folder, index):
-    declared_mime = None
-    if not isinstance(source, str) or not source:
-        raise GatewayError(400, 'An image URL or data image is required.', 'invalid_image')
-    if source.startswith('data:'):
-        match = re.fullmatch(r'data:(image/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)', source)
-        if not match:
-            raise GatewayError(400, 'Use a valid PNG, JPEG or WebP base64 data image.', 'invalid_image')
-        declared_mime, encoded = match.groups()
-        if len(encoded) > 4 * ((MAX_IMAGE_BYTES + 2) // 3):
-            raise GatewayError(413, 'Image exceeds the 5 MiB limit.', 'image_too_large')
-        try:
-            data = base64.b64decode(encoded, validate=True)
-        except (ValueError, binascii.Error):
-            raise GatewayError(400, 'Invalid base64 image.', 'invalid_image') from None
-    else:
-        data = _fetch_https(source)
-    if len(data) > MAX_IMAGE_BYTES:
-        raise GatewayError(413, 'Image exceeds the 5 MiB limit.', 'image_too_large')
+def validate_image_bytes(data, declared_mime=None, max_bytes=None):
+    max_bytes = MAX_IMAGE_BYTES if max_bytes is None else max_bytes
+    if len(data) > max_bytes:
+        raise GatewayError(413, 'Image exceeds its byte limit.', 'image_too_large')
     try:
         with Image.open(io.BytesIO(data), formats=list(FORMATS)) as image:
             fmt = image.format
@@ -119,6 +104,27 @@ def _prepare_one(source, folder, index):
         raise GatewayError(413, 'Image exceeds the pixel limit.', 'image_too_large') from None
     except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
         raise GatewayError(400, 'Image content is corrupt or unsupported.', 'invalid_image') from None
+    return fmt, (image.width, image.height)
+
+
+def _prepare_one(source, folder, index):
+    declared_mime = None
+    if not isinstance(source, str) or not source:
+        raise GatewayError(400, 'An image URL or data image is required.', 'invalid_image')
+    if source.startswith('data:'):
+        match = re.fullmatch(r'data:(image/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)', source)
+        if not match:
+            raise GatewayError(400, 'Use a valid PNG, JPEG or WebP base64 data image.', 'invalid_image')
+        declared_mime, encoded = match.groups()
+        if len(encoded) > 4 * ((MAX_IMAGE_BYTES + 2) // 3):
+            raise GatewayError(413, 'Image exceeds the 5 MiB limit.', 'image_too_large')
+        try:
+            data = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error):
+            raise GatewayError(400, 'Invalid base64 image.', 'invalid_image') from None
+    else:
+        data = _fetch_https(source)
+    fmt, _ = validate_image_bytes(data, declared_mime)
     path = Path(folder) / (str(index) + FORMATS[fmt][1])
     path.write_bytes(data)
     return str(path)
