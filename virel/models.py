@@ -3,7 +3,7 @@ import re
 
 IMAGE_MODEL_ICONS = {'gempix', 'image_edit_auto'}
 
-MODEL_SELECTOR = 'button.model-selector-card'
+MODEL_SELECTOR = 'button.model-selector-card,button.model-selector-trigger[aria-label="Select primary model"]'
 MODEL_ROWS = 'ms-model-carousel-row button.content-button[id^="model-carousel-row-models/"]'
 READ_MODEL_ROWS = r'''() => Array.from(document.querySelectorAll('ms-model-carousel-row')).map(row => {
     const button = row.querySelector('button.content-button[id^="model-carousel-row-models/"]');
@@ -25,9 +25,10 @@ def catalog_from_rows(rows):
         identifier = row.get('id', '')
         if not isinstance(identifier, str) or not re.fullmatch(r'[a-z0-9][a-z0-9._-]*', identifier):
             continue
-        status = 'unavailable' if row.get('paid') or row.get('disabled') else ('selectable' if row.get('icon') in {'spark', *IMAGE_MODEL_ICONS} else 'unsupported')
+        speech = row.get('icon') == 'audio_magic_eraser' and identifier.endswith('-tts')
+        status = 'unavailable' if row.get('paid') or row.get('disabled') else ('selectable' if row.get('icon') in {'spark', *IMAGE_MODEL_ICONS} or speech else 'unsupported')
         item = {'id': identifier, 'display_name': row.get('label') or identifier, 'status': status,
-            'capabilities': {'input_modalities': None, 'output_modalities': ['image'] if row.get('icon') in IMAGE_MODEL_ICONS else None, 'ui_category_icon': row.get('icon'), 'source': 'ai_studio_ui'}}
+            'capabilities': {'input_modalities': None, 'output_modalities': ['image'] if row.get('icon') in IMAGE_MODEL_ICONS else (['audio'] if speech else None), 'ui_category_icon': row.get('icon'), 'source': 'ai_studio_ui'}}
         resolved = row.get('resolved_id')
         if isinstance(resolved, str) and re.fullmatch(r'[a-z0-9][a-z0-9._-]*', resolved):
             item['resolved_id'] = resolved
