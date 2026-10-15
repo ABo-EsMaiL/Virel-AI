@@ -37,6 +37,8 @@ async def audio_response(request, translate):
         if language is not None and (not isinstance(language, str) or not re.fullmatch('[a-z]{2}', language)):
             raise GatewayError(400, 'Language must be a two-letter lowercase ISO code.', 'invalid_request')
         actual_model = DEFAULT_MODEL if model == 'whisper-1' else model
+        if browser_manager.model_catalog_observed:
+            browser_manager.require_model(actual_model)
         task = 'Translate the audible speech into English.' if translate else 'Transcribe the audible speech in its original language. Do not translate.'
         if language:
             task += ' The caller supplied this source-language hint: '+language+'.'

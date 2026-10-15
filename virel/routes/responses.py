@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from ..auth import verify_api_key
 from ..errors import GatewayError, provider_error
-from ..generation import checked_stream, require_ready, validate_options, usage_headers
+from ..generation import checked_stream, require_ready, validate_options, usage_headers, response_model
 from ..config import DEFAULT_MODEL, RATE_LIMIT
 from ..runtime import browser_manager, limiter, _get_semaphore
 from ..messages import extract_prompt_and_images, responses_messages
@@ -68,7 +68,8 @@ async def responses_endpoint(request: Request):
                                     "id": resp_id,
                                     "object": "response.chunk",
                                     "created_at": now,
-                                    "model": model_name,
+                                    "model": response_model(model_name),
+                                    "requested_model": model_name,
                                     "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}],
                                     "output": [{"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": delta, "annotations": []}]}]
                                 }
@@ -77,7 +78,8 @@ async def responses_endpoint(request: Request):
                             "id": resp_id,
                             "object": "response.done",
                             "created_at": now,
-                            "model": model_name,
+                            "model": response_model(model_name),
+                            "requested_model": model_name,
                             "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
                         }
                         yield f"data: {json.dumps(done_chunk, ensure_ascii=False)}\n\n"
@@ -106,7 +108,8 @@ async def responses_endpoint(request: Request):
                     "created_at": now,
                     "status": "completed",
                     "store": False,
-                    "model": model_name,
+                    "model": response_model(model_name),
+                    "requested_model": model_name,
                     "output": [
                         {
                             "type": "message",

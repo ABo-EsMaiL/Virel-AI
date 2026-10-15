@@ -63,22 +63,28 @@ async def health_check():
 
 
 @router.get("/v1/models", dependencies=[Depends(verify_api_key)])
-async def list_models():
-    """Lists supported models in standard OpenAI format."""
-    now = int(time.time())
-    models = [browser_manager.active_model] if browser_manager.is_ready and browser_manager.model_verified else []
-    return {
-        "object": "list",
-        "data": [
-            {
-                "id": m,
-                "object": "model",
-                "created": now,
-                "owned_by": "google-ai-studio-web"
-            }
-            for m in models
-        ]
-    }
+async def list_models(refresh: bool = False):
+    """Last complete UI observation; explicit refresh never interrupts generation."""
+    from ..errors import GatewayError
+    if refresh:
+        if not browser_manager.is_ready:
+            raise GatewayError(503, 'AI Studio is not ready.', 'browser_not_ready')
+        if browser_manager.lock.locked():
+            raise GatewayError(429, 'Browser is processing another request.', 'concurrency_limit')
+        async with browser_manager.lock:
+            await browser_manager.refresh_model_catalog()
+    records = []
+    if browser_manager.is_ready and browser_manager.model_catalog_observed:
+        for item in browser_manager.model_catalog.values():
+            if item['status'] != 'selectable':
+                continue
+            actual = item.get('resolved_id', item['id'])
+            records.append({'id': item['id'], 'object': 'model', 'created': browser_manager.catalog_observed_at,
+                'owned_by': 'google-ai-studio-web', 'display_name': item['display_name'],
+                'capabilities': item['capabilities'], 'virel': {'source': 'ai_studio_ui',
+                    'observed_at': browser_manager.catalog_observed_at, 'generation_verified': actual in browser_manager.generated_models,
+                    'resolved_id': item.get('resolved_id')}})
+    return {'object': 'list', 'data': records}
 
 
 @router.get("/debug_dom", dependencies=[Depends(verify_api_key)])
