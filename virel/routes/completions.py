@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from ..auth import verify_api_key
 from ..errors import GatewayError
-from ..generation import checked_stream, require_ready, validate_options, usage_headers
+from ..generation import checked_stream, require_ready, validate_options, usage_headers, response_model
 from ..config import DEFAULT_MODEL, RATE_LIMIT
 from ..runtime import browser_manager, limiter, _get_semaphore
 
@@ -46,7 +46,8 @@ async def legacy_completions(request: Request):
                 "object": "text_completion",
                 "usage": browser_manager.last_usage.chat() if browser_manager.last_usage else None,
                 "created": now,
-                "model": model_name,
+                "model": response_model(model_name),
+                "requested_model": model_name,
                 "choices": [{
                     "text": full_text,
                     "index": 0,

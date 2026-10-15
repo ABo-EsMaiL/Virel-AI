@@ -4,6 +4,7 @@ from contextlib import aclosing
 import logging
 from .images import prepared_images
 from .files import prepared_pdfs
+from .config import DEFAULT_MODEL
 from .errors import GatewayError
 from .runtime import browser_manager
 
@@ -36,6 +37,10 @@ def validate_options(body):
 
 
 def _browser_error(text):
+    if "MODEL_NOT_FOUND" in text:
+        return GatewayError(404, "Requested UI model was not found.", "model_not_found")
+    if "UNSUPPORTED_MODEL" in text or "UNSUPPORTED_GOOGLE_SEARCH" in text:
+        return GatewayError(400, "The requested model capability is not available.", "unsupported_capability")
     if "TIMEOUT" in text or "NO_RESPONSE_STARTED" in text:
         return GatewayError(504, "AI Studio generation timed out.", "upstream_timeout")
     if "RESET_FAILED" in text:
@@ -49,6 +54,8 @@ def _browser_error(text):
 
 async def checked_stream(prompt, request_id, **options):
     require_ready()
+    if browser_manager.model_catalog_observed:
+        browser_manager.require_model(options.get("model_name") or DEFAULT_MODEL)
     browser_manager.last_usage = None
     browser_manager.last_timings = {}
     text = ""
@@ -91,3 +98,9 @@ def usage_headers(request_id):
     return {"X-Request-ID": request_id,
             "X-Virel-Usage-Source": "google_ai_studio" if browser_manager.last_usage else "unavailable",
             "X-Virel-Usage-Accuracy": "reported" if browser_manager.last_usage else "unknown"}
+
+
+def response_model(requested):
+    if browser_manager.model_verified and browser_manager.active_model:
+        return browser_manager.active_model
+    return requested

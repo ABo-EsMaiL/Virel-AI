@@ -13,15 +13,11 @@ from playwright.async_api import async_playwright, BrowserContext, Page
 from .config import (RUNTIME_DIR, CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, ENABLE_SEARCH_GROUNDING, TARGET_URL)
 from .dom import FETCH_RESPONSE_STATE
 from .usage import BrowserUsageObserver
+from .models import MODEL_SELECTOR, MODEL_ROWS, READ_MODEL_ROWS, catalog_from_rows, selected_id
+from .errors import GatewayError
 
 logger = logging.getLogger("virel.webhook")
 
-
-def model_matches(label, target):
-    def normalize(value):
-        return re.sub(r"[\s_-]+", " ", value.lower()).strip()
-    expected = normalize(target)
-    return any(normalize(line).removeprefix("chat with ") == expected for line in label.splitlines())
 
 
 class WebHookBrowserManager:
@@ -34,6 +30,11 @@ class WebHookBrowserManager:
         self.is_shutting_down = False
         self.active_model = ""
         self.model_verified = False
+        self.model_catalog = {}
+        self.model_catalog_observed = False
+        self.catalog_observed_at = 0
+        self.generated_models = set()
+        self.model_error = "MODEL_UNAVAILABLE"
         self.active_thinking = ""
         self.thinking_verified = False
         self.google_search_enabled = False
@@ -123,129 +124,94 @@ class WebHookBrowserManager:
         await self.ensure_model(DEFAULT_MODEL)
         await self.ensure_thinking_mode()
         await self.ensure_tools(ENABLE_SEARCH_GROUNDING)
+        self.is_ready = self.model_catalog_observed
+
+    async def _open_model_picker(self):
+        await self.page.locator(MODEL_SELECTOR).first.click()
+        await self.page.locator(MODEL_ROWS).first.wait_for(state='visible', timeout=6000)
+
+    async def refresh_model_catalog(self):
+        """Caller owns the browser lock; publish only complete observations."""
+        if not self.page or self.page.is_closed() or self.is_shutting_down:
+            raise GatewayError(503, 'AI Studio model picker is unavailable.', 'model_catalog_unavailable')
+        try:
+            await self._open_model_picker()
+            catalog = catalog_from_rows(await self.page.evaluate(READ_MODEL_ROWS))
+            if not any(item['status'] == 'selectable' for item in catalog.values()):
+                raise GatewayError(503, 'AI Studio returned no selectable text models.', 'model_catalog_unavailable')
+            self.model_catalog = catalog
+            self.catalog_observed_at = int(time.time())
+            self.model_catalog_observed = True
+        except GatewayError:
+            raise
+        except Exception:
+            raise GatewayError(503, 'AI Studio model discovery failed.', 'model_catalog_unavailable') from None
+        finally:
+            await self.page.keyboard.press('Escape')
+
+    def require_model(self, identifier):
+        item = self.model_catalog.get(identifier)
+        if item is None:
+            raise GatewayError(404, 'Requested model was not observed in the AI Studio catalog.', 'model_not_found')
+        if item['status'] == 'unavailable':
+            raise GatewayError(503, 'Requested UI model is disabled or requires paid access.', 'model_unavailable')
+        if item['status'] != 'selectable':
+            raise GatewayError(400, 'This model requires an output adapter that is not implemented.', 'unsupported_model_capability')
+        return item
 
     async def ensure_model(self, target_model: Optional[str] = None):
-        """Ensures the requested model is selected in Google AI Studio UI."""
+        """Select one exact observed card and verify the resulting canonical ID."""
+        self.model_verified = False
+        self.active_model = ''
+        self.model_error = 'MODEL_UNAVAILABLE'
+        self.active_thinking = ''
+        self.thinking_verified = False
+        self.google_search_enabled = False
+        self.search_verified = False
         target_model = target_model or DEFAULT_MODEL
-        if not target_model or not self.page or self.page.is_closed() or self.is_shutting_down:
+        if not self.page or self.page.is_closed() or self.is_shutting_down:
             return
-
-        logger.info(f"Target model: '{target_model}'")
-
         try:
-            selectors = [
-                'button.model-selector-card',
-                '.settings-model-selector button',
-                '.settings-model-selector',
-                'button[aria-label*="Model" i]',
-                'ms-model-selector button',
-                '.model-selector button',
-                'mat-select[aria-label*="Model" i]',
-                'ms-model-selector mat-select',
-                '.model-selector mat-select',
-                '[data-test-id="model-selector"]',
-            ]
-
-            model_el = None
-            for sel in selectors:
-                loc = self.page.locator(sel)
-                if await loc.count() > 0:
-                    try:
-                        await loc.first.wait_for(state="visible", timeout=2000)
-                        cls = (await loc.first.get_attribute("class") or "").lower()
-                        if "upgrade" in cls:
-                            continue
-                        model_el = loc.first
-                        break
-                    except Exception:
-                        pass
-
-            if not model_el:
+            if not self.model_catalog_observed or target_model not in self.model_catalog:
+                await self.refresh_model_catalog()
+            item = self.require_model(target_model)
+            expected = item.get('resolved_id', target_model)
+            control = self.page.locator(MODEL_SELECTOR).first
+            current = selected_id(await control.inner_text(), self.model_catalog)
+            if current != expected:
                 try:
-                    all_selects = self.page.locator('mat-select')
-                    cnt = await all_selects.count()
-                    for i in range(cnt):
-                        s = all_selects.nth(i)
-                        cls = (await s.get_attribute("class") or "").lower()
-                        if "upgrade" in cls:
-                            continue
-                        label = (await s.get_attribute("aria-label") or "").lower()
-                        txt = (await s.inner_text() or "").lower()
-                        if "model" in label or any(m in txt for m in ["gemini-3", "3.8", "flash"]):
-                            model_el = s
-                            break
-                except Exception:
-                    pass
-
-            current_model_before = ""
-            if model_el:
-                current_model_before = (await model_el.inner_text() or "").strip()
-            else:
-                try:
-                    current_model_before = await self.page.evaluate('''() => {
-                        for (const el of document.querySelectorAll('button, mat-select, [role="button"], .model-picker')) {
-                            const t = (el.innerText || '').trim();
-                            if (/gemini.*flash|gemini.*pro|flash.*lite/i.test(t) && t.length < 50) {
-                                return t;
-                            }
-                        }
-                        return '';
-                    }''')
-                except Exception:
-                    pass
-
-            if not current_model_before:
-                headings = await self.page.locator("h1, h2").all_text_contents()
-                current_model_before = next((heading for heading in headings if model_matches(heading, target_model)), "")
-
-            logger.info(f"Current model before: '{current_model_before}'")
-
-            if current_model_before and model_matches(current_model_before, target_model):
-                self.active_model = target_model
-                self.model_verified = True
-                logger.info(f"Current model after: '{current_model_before}' | MODEL VERIFIED = true")
-                return
-
-            if model_el:
-                logger.info(f"Changing Model from '{current_model_before}' to '{target_model}'...")
-                await model_el.click()
-                await asyncio.sleep(0.4)
-
-                options = self.page.locator('mat-option:visible, [role="menuitem"]:visible, [role="option"]:visible')
-                opt_count = await options.count()
-                available_options = []
-                clicked = False
-
-                for i in range(opt_count):
-                    opt = options.nth(i)
-                    text = (await opt.inner_text() or "").strip()
-                    available_options.append(text)
-                    if model_matches(text, target_model):
-                        await opt.click()
-                        clicked = True
-                        await asyncio.sleep(0.4)
-                        current_model_after = (await model_el.inner_text() or "").strip()
-                        self.active_model = target_model
-                        self.model_verified = bool(model_matches(current_model_after, target_model))
-                        logger.info(f"Current model after: '{current_model_after}' | MODEL VERIFIED = {self.model_verified}")
+                    await self._open_model_picker()
+                    current_catalog = catalog_from_rows(await self.page.evaluate(READ_MODEL_ROWS))
+                    if target_model not in current_catalog:
+                        raise GatewayError(404, 'Requested model is no longer present.', 'model_not_found')
+                    self.model_catalog = current_catalog
+                    self.catalog_observed_at = int(time.time())
+                    item = self.require_model(target_model)
+                    expected = item.get('resolved_id', target_model)
+                    card = self.page.locator(MODEL_ROWS + '[id="model-carousel-row-models/' + target_model + '"]').first
+                    if await card.is_disabled() or await card.get_attribute('aria-disabled') == 'true':
+                        return
+                    await card.click()
+                finally:
+                    await self.page.keyboard.press('Escape')
+                deadline = time.monotonic() + 8
+                while time.monotonic() < deadline:
+                    current = selected_id(await control.inner_text(), self.model_catalog)
+                    if current == expected:
                         break
-
-                if not clicked:
-                    logger.warning(f"Could not find model option matching '{target_model}'. Available options: {available_options}")
-                    await self.page.keyboard.press("Escape")
-                    self.active_model = current_model_before or target_model
-                    self.model_verified = False
-                    logger.info(f"Current model after: '{self.active_model}' | MODEL VERIFIED = false")
-            else:
-                self.active_model = current_model_before or target_model
-                self.model_verified = bool(current_model_before and model_matches(current_model_before, target_model))
-                logger.info(f"Current model after: '{self.active_model}' | MODEL VERIFIED = {self.model_verified}")
-        except Exception as e:
-            logger.warning(f"Failed to set Model: {e}")
-            self.model_verified = False
+                    await asyncio.sleep(.2)
+            self.active_model = current or ''
+            self.model_verified = current == expected
+            logger.info('Model requested=%s active=%s verified=%s', target_model, self.active_model, self.model_verified)
+        except GatewayError as error:
+            self.model_error = 'MODEL_NOT_FOUND' if error.status_code == 404 else ('UNSUPPORTED_MODEL' if error.status_code == 400 else 'MODEL_UNAVAILABLE')
+        except Exception:
+            logger.warning('Model selection could not be verified.')
 
     async def ensure_thinking_mode(self):
-        """Ensures the Thinking Mode is set correctly on the current page."""
+        """Observe only the current model settings; absence is unverified."""
+        self.active_thinking = ""
+        self.thinking_verified = False
         if not THINKING_MODE or not self.page or self.page.is_closed() or self.is_shutting_down:
             return
 
@@ -296,7 +262,9 @@ class WebHookBrowserManager:
             self.thinking_verified = False
 
     async def ensure_tools(self, enable_search: Optional[bool] = None):
-        """Ensures Google Search Grounding is configured as requested (default: OFF)."""
+        """Observe/configure search only when its current-model controls exist."""
+        self.google_search_enabled = False
+        self.search_verified = False
         if enable_search is None:
             enable_search = ENABLE_SEARCH_GROUNDING
         if not self.page or self.page.is_closed() or self.is_shutting_down:
@@ -306,6 +274,8 @@ class WebHookBrowserManager:
             remove_btn = self.page.locator('button[aria-label="Remove Grounding with Google Search"]')
             search_toggle = self.page.locator('button[aria-label="Grounding with Google Search"], button[aria-label*="Google Search" i]')
 
+            if await remove_btn.count() == 0 and await search_toggle.count() == 0:
+                return
             if not enable_search:
                 if await remove_btn.count() > 0:
                     logger.info("Disabling Google Search Grounding via remove button...")
@@ -405,10 +375,19 @@ class WebHookBrowserManager:
         self.last_usage = None
         self.comparison_skipped = False
         self.usage_observer.begin(attempt_id, prompt)
+        final_text = ""
+        failed = False
         try:
             async with aclosing(self._generate_in_page(prompt, model_name, batch_size, enable_search, images)) as stream:
                 async for item in stream:
+                    if isinstance(item, dict):
+                        failed |= "error" in item
+                        final_text = item.get("text", final_text)
+                    else:
+                        final_text += item
                     yield item
+            if not failed and final_text.strip() and self.model_verified:
+                self.generated_models.add(self.active_model)
         finally:
             usage = await self.usage_observer.finish(attempt_id)
             self.last_usage = None if self.comparison_skipped else usage
@@ -453,11 +432,14 @@ class WebHookBrowserManager:
             return
 
         if not self.model_verified:
-            yield {"error": "[Error: MODEL_UNAVAILABLE - requested model is not verified]"}
+            yield {"error": "[Error: " + self.model_error + " - requested model is not verified]"}
             return
 
         # Explicitly ensure Google Search Grounding state (default: OFF)
         await self.ensure_tools(enable_search=enable_search)
+        if enable_search is True and not (self.google_search_enabled and self.search_verified):
+            yield {"error": "[Error: UNSUPPORTED_GOOGLE_SEARCH - requested search is not available]"}
+            return
 
         # Ensure no stray menus or overlays exist
         try:

@@ -8,8 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from ..auth import verify_api_key
 from ..errors import GatewayError, provider_error
-from ..generation import checked_stream, require_ready, validate_options, usage_headers
-from ..config import DEFAULT_MODEL, RATE_LIMIT, ENABLE_SEARCH_GROUNDING
+from ..generation import checked_stream, require_ready, validate_options, usage_headers, response_model
+from ..config import DEFAULT_MODEL, RATE_LIMIT
 from ..runtime import browser_manager, limiter, _get_semaphore
 from ..schemas import ChatRequest
 from ..messages import extract_prompt_and_images
@@ -45,12 +45,10 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
     enable_search = None
     if search_hdr is not None:
         enable_search = search_hdr.lower() in ("true", "1", "yes")
-    else:
-        enable_search = ENABLE_SEARCH_GROUNDING
 
     logger.info(
         f"Incoming /v1/chat/completions prompt ({len(prompt)} chars, images={len(images)}, batch_size={batch_size}, "
-        f"google_search={'ENABLED' if enable_search else 'DISABLED'})"
+        f"google_search={'INHERITED' if enable_search is None else ('ENABLED' if enable_search else 'DISABLED')})"
     )
 
     async def sse_generator():
@@ -61,10 +59,11 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
                         "id": chunk_id,
                         "object": "chat.completion.chunk",
                         "created": now,
-                        "model": model_name,
+                        "model": response_model(model_name),
+                        "requested_model": model_name,
                         "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": None}]
                     }
-                    yield f"data: {json.dumps(first_chunk, ensure_ascii=False)}\n\n"
+                    first_pending = True
 
                     async for chunk_data in checked_stream(prompt, chunk_id, model_name=model_name, batch_size=batch_size, enable_search=enable_search, images=images):
                         if isinstance(chunk_data, dict):
@@ -72,12 +71,18 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
                         else:
                             delta = chunk_data
 
+                        if first_pending:
+                            first_chunk["model"] = response_model(model_name)
+                            yield f"data: {json.dumps(first_chunk, ensure_ascii=False)}\n\n"
+                            first_pending = False
+
                         if delta:
                             chunk = {
                                 "id": chunk_id,
                                 "object": "chat.completion.chunk",
                                 "created": now,
-                                "model": model_name,
+                                "model": response_model(model_name),
+                                "requested_model": model_name,
                                 "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
                             }
                             yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
@@ -86,7 +91,8 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
                         "id": chunk_id,
                         "object": "chat.completion.chunk",
                         "created": now,
-                        "model": model_name,
+                        "model": response_model(model_name),
+                        "requested_model": model_name,
                         "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
                     }
                     yield f"data: {json.dumps(done_chunk, ensure_ascii=False)}\n\n"
@@ -130,7 +136,8 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
                     "id": chunk_id,
                     "object": "chat.completion",
                     "created": now,
-                    "model": model_name,
+                    "model": response_model(model_name),
+                    "requested_model": model_name,
                     "usage": browser_manager.last_usage.chat() if browser_manager.last_usage else None,
                     "choices": [{
                         "index": 0,

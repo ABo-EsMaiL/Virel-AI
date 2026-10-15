@@ -23,6 +23,14 @@ Set `VIREL_API_KEY`, `DEFAULT_MODEL`, and `CHROME_PROFILE_DIR` in `.env`. The ve
 
 Use one worker. For n8n in Docker Desktop, listen on `0.0.0.0` and set its ordinary OpenAI credential Base URL to `http://host.docker.internal:8001/v1` with your gateway key.
 
+## Model selection
+
+GET /v1/models returns the last account-UI observation of selectable general-text model IDs. The ordinary n8n model picker uses those IDs directly. Paid, disabled and unimplemented output categories are excluded. Unknown capability fields remain null; appearing in the list does not guarantee quota or every modality.
+
+Send the exact model ID in a request. Virel verifies the browser selection before submitting; it never falls back to another model. Unknown IDs return404, unavailable selections503, unsupported categories400. Responses disclose actual model and requested_model separately when a UI alias resolves to a concrete model. The documented audio whisper-1 compatibility alias remains unchanged.
+
+Authenticated GET /v1/models?refresh=true rescans the UI while idle; a busy browser returns429. Ordinary listing reads the snapshot without interrupting generation. Discovery metadata includes observed_at and process-local generation_verified; model-specific thinking/search verification is cleared when controls are absent.
+
 ## Text request
 
 POST `/v1/chat/completions` with `Authorization: Bearer <VIREL_API_KEY>`:
