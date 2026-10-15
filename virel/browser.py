@@ -10,7 +10,7 @@ from contextlib import aclosing
 from typing import AsyncGenerator, List, Optional, Union
 from playwright.async_api import async_playwright, BrowserContext, Page
 
-from .config import (RUNTIME_DIR, CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, ENABLE_SEARCH_GROUNDING, TARGET_URL)
+from .config import (RUNTIME_DIR, CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, ENABLE_SEARCH_GROUNDING, ENABLE_URL_CONTEXT, TARGET_URL)
 from .dom import FETCH_RESPONSE_STATE
 from .usage import BrowserUsageObserver
 from .models import MODEL_SELECTOR, MODEL_ROWS, READ_MODEL_ROWS, catalog_from_rows, selected_id
@@ -35,6 +35,10 @@ class WebHookBrowserManager:
         self.catalog_observed_at = 0
         self.generated_models = set()
         self.model_error = "MODEL_UNAVAILABLE"
+        self.active_temperature = None
+        self.temperature_verified = False
+        self.url_context_enabled = False
+        self.url_context_verified = False
         self.active_thinking = ""
         self.thinking_verified = False
         self.google_search_enabled = False
@@ -124,6 +128,7 @@ class WebHookBrowserManager:
         await self.ensure_model(DEFAULT_MODEL)
         await self.ensure_thinking_mode()
         await self.ensure_tools(ENABLE_SEARCH_GROUNDING)
+        await self.ensure_url_context()
         self.is_ready = self.model_catalog_observed
 
     async def _open_model_picker(self):
@@ -148,6 +153,7 @@ class WebHookBrowserManager:
             raise GatewayError(503, 'AI Studio model discovery failed.', 'model_catalog_unavailable') from None
         finally:
             await self.page.keyboard.press('Escape')
+            await self.page.locator(MODEL_ROWS).first.wait_for(state='hidden', timeout=2000)
 
     def require_model(self, identifier):
         item = self.model_catalog.get(identifier)
@@ -164,6 +170,10 @@ class WebHookBrowserManager:
         self.model_verified = False
         self.active_model = ''
         self.model_error = 'MODEL_UNAVAILABLE'
+        self.active_temperature = None
+        self.temperature_verified = False
+        self.url_context_enabled = False
+        self.url_context_verified = False
         self.active_thinking = ''
         self.thinking_verified = False
         self.google_search_enabled = False
@@ -205,61 +215,77 @@ class WebHookBrowserManager:
             logger.info('Model requested=%s active=%s verified=%s', target_model, self.active_model, self.model_verified)
         except GatewayError as error:
             self.model_error = 'MODEL_NOT_FOUND' if error.status_code == 404 else ('UNSUPPORTED_MODEL' if error.status_code == 400 else 'MODEL_UNAVAILABLE')
-        except Exception:
-            logger.warning('Model selection could not be verified.')
+        except Exception as error:
+            logger.warning('Model selection could not be verified: %s', str(error).splitlines()[0])
 
-    async def ensure_thinking_mode(self):
-        """Observe only the current model settings; absence is unverified."""
+    async def ensure_thinking_mode(self, effort=None):
+        """Apply the current request, never a preceding request's override."""
         self.active_thinking = ""
         self.thinking_verified = False
-        if not THINKING_MODE or not self.page or self.page.is_closed() or self.is_shutting_down:
+        target = effort if effort is not None else THINKING_MODE
+        if not target or not self.page or self.page.is_closed() or self.is_shutting_down:
             return
-
         try:
-            thinking_select = self.page.locator('mat-select[aria-label="Thinking Level"], mat-select[aria-label*="Thinking" i]')
-
-            try:
-                await thinking_select.first.wait_for(state="visible", timeout=6000)
-            except Exception:
-                logger.debug("Thinking Level selector not found or not visible yet.")
-                return
-
-            if await thinking_select.count() > 0:
-                current_thinking = (await thinking_select.first.inner_text() or "").strip()
-                self.active_thinking = current_thinking
-                if THINKING_MODE.lower() not in current_thinking.lower():
-                    logger.info(f"Changing Thinking Level from '{current_thinking}' to '{THINKING_MODE}'...")
-                    await thinking_select.first.click()
-                    await asyncio.sleep(0.3)
-
+            control = self.page.locator('mat-select[aria-label*="Thinking" i]').first
+            if await control.count() and await control.is_visible():
+                selected = control.locator(".mat-mdc-select-min-line").first
+                if not await selected.count():
+                    selected = control
+                if (await selected.inner_text()).strip().lower() != target:
+                    await control.click()
                     options = self.page.locator('mat-option:visible')
-                    count = await options.count()
-                    clicked = False
-                    available = []
-                    for i in range(count):
-                        opt = options.nth(i)
-                        text = (await opt.inner_text() or "").strip()
-                        available.append(text)
-                        if THINKING_MODE.lower() in text.lower():
-                            await opt.click()
-                            clicked = True
-                            self.active_thinking = text
-                            self.thinking_verified = True
-                            logger.info(f"Thinking Level set to '{text}' | THINKING VERIFIED = true")
-                            await asyncio.sleep(0.3)
+                    for i in range(await options.count()):
+                        if (await options.nth(i).inner_text()).strip().lower() == target:
+                            await options.nth(i).click()
+                            await options.first.wait_for(state="hidden", timeout=2000)
                             break
-
-                    if not clicked:
-                        logger.warning(f"Could not find a Thinking Level option matching '{THINKING_MODE}'. Available: {available}")
+                    else:
                         await self.page.keyboard.press("Escape")
-                        self.thinking_verified = False
-                else:
-                    self.active_thinking = current_thinking
-                    self.thinking_verified = True
-                    logger.info(f"Thinking Level already verified as '{current_thinking}' | THINKING VERIFIED = true")
-        except Exception as e:
-            logger.warning(f"Failed to set Thinking Mode: {e}")
-            self.thinking_verified = False
+                self.active_thinking = (await selected.inner_text()).strip().lower()
+                self.thinking_verified = self.active_thinking == target
+        except Exception:
+            logger.warning("Thinking level could not be verified.")
+        if effort is not None and not self.thinking_verified:
+            raise GatewayError(400, "Requested thinking level is unavailable for this UI model.", "unsupported_parameter")
+
+    async def ensure_temperature(self, temperature=None):
+        self.active_temperature = None
+        self.temperature_verified = False
+        control = self.page.locator('input[aria-label="Temperature"][role="spinbutton"], input[aria-label="Temperature"][type="number"]').first
+        if not await control.count() or not await control.is_visible() or not await control.is_enabled():
+            if temperature is not None:
+                raise GatewayError(400, "Temperature control is unavailable for this UI model.", "unsupported_parameter")
+            return
+        target = 1 if temperature is None else temperature
+        low = await control.get_attribute('aria-valuemin') or await control.get_attribute('min')
+        high = await control.get_attribute('aria-valuemax') or await control.get_attribute('max')
+        if (low is not None and target < float(low)) or (high is not None and target > float(high)):
+            raise GatewayError(400, "Temperature is outside the current model's UI range.", "unsupported_parameter")
+        try:
+            await control.fill(str(target))
+            await control.press("Tab")
+            self.active_temperature = float(await control.input_value())
+            self.temperature_verified = abs(self.active_temperature - target) < 1e-9 and await control.get_attribute('aria-invalid') != 'true'
+        except Exception:
+            logger.warning("Temperature could not be verified.")
+        if not self.temperature_verified:
+            raise GatewayError(503, "AI Studio temperature could not be verified.", "settings_unavailable")
+
+    async def ensure_url_context(self):
+        self.url_context_enabled = False
+        self.url_context_verified = False
+        if not self.page or self.page.is_closed() or self.is_shutting_down:
+            return
+        try:
+            control = self.page.locator('button[role="switch"][aria-label="Browse the url context" i]').first
+            if not await control.count() or not await control.is_visible() or not await control.is_enabled():
+                return
+            if (await control.get_attribute('aria-checked') == 'true') != ENABLE_URL_CONTEXT:
+                await control.click()
+            self.url_context_enabled = await control.get_attribute('aria-checked') == 'true'
+            self.url_context_verified = self.url_context_enabled == ENABLE_URL_CONTEXT
+        except Exception:
+            logger.warning("URL Context could not be verified.")
 
     async def ensure_tools(self, enable_search: Optional[bool] = None):
         """Observe/configure search only when its current-model controls exist."""
@@ -345,6 +371,7 @@ class WebHookBrowserManager:
             await self.ensure_model(model_name)
             await self.ensure_thinking_mode()
             await self.ensure_tools(ENABLE_SEARCH_GROUNDING)
+            await self.ensure_url_context()
             return True
         except Exception:
             logger.warning("Fresh-chat navigation or prompt verification failed.")
@@ -370,7 +397,7 @@ class WebHookBrowserManager:
             "tier": f"trigger-driven ({case_count} cases)"
         }
 
-    async def send_prompt_and_stream(self, prompt, model_name=None, batch_size=None, enable_search=None, images=None, request_id=None):
+    async def send_prompt_and_stream(self, prompt, model_name=None, batch_size=None, enable_search=None, images=None, request_id=None, reasoning_effort=None, temperature=None):
         attempt_id = request_id or uuid.uuid4().hex
         self.last_usage = None
         self.comparison_skipped = False
@@ -378,7 +405,7 @@ class WebHookBrowserManager:
         final_text = ""
         failed = False
         try:
-            async with aclosing(self._generate_in_page(prompt, model_name, batch_size, enable_search, images)) as stream:
+            async with aclosing(self._generate_in_page(prompt, model_name, batch_size, enable_search, images, reasoning_effort=reasoning_effort, temperature=temperature)) as stream:
                 async for item in stream:
                     if isinstance(item, dict):
                         failed |= "error" in item
@@ -419,7 +446,7 @@ class WebHookBrowserManager:
             return False
 
     async def _generate_in_page(
-        self, prompt: str, model_name: Optional[str] = None, batch_size: Optional[int] = None, enable_search: Optional[bool] = None, images: Optional[List[str]] = None
+        self, prompt: str, model_name: Optional[str] = None, batch_size: Optional[int] = None, enable_search: Optional[bool] = None, images: Optional[List[str]] = None, reasoning_effort=None, temperature=None
     ) -> AsyncGenerator[Union[dict, str], None]:
         """Injects the prompt (and optional images) into Google AI Studio and yields streaming text deltas."""
         t_req_start = time.time()
@@ -435,7 +462,11 @@ class WebHookBrowserManager:
             yield {"error": "[Error: " + self.model_error + " - requested model is not verified]"}
             return
 
-        # Explicitly ensure Google Search Grounding state (default: OFF)
+        if reasoning_effort is not None:
+            await self.ensure_thinking_mode(reasoning_effort)
+        await self.ensure_temperature(temperature)
+
+        # Preserve the requested/current Google Search state.
         await self.ensure_tools(enable_search=enable_search)
         if enable_search is True and not (self.google_search_enabled and self.search_verified):
             yield {"error": "[Error: UNSUPPORTED_GOOGLE_SEARCH - requested search is not available]"}

@@ -35,7 +35,7 @@ async def responses_endpoint(request: Request):
     body = await request.json()
     if not isinstance(body, dict):
         raise GatewayError(400, "Expected a JSON object.", "invalid_request")
-    validate_options(body)
+    generation_options = validate_options(body)
     if body.get("prompt"):
         raise GatewayError(400, "Reusable prompt templates are not supported yet.", "unsupported_capability")
     require_ready()
@@ -57,7 +57,7 @@ async def responses_endpoint(request: Request):
             try:
                 async with sem:
                     async with browser_manager.lock:
-                        async for chunk_data in checked_stream(prompt, resp_id, model_name=model_name, batch_size=batch_size, images=images):
+                        async for chunk_data in checked_stream(prompt, resp_id, model_name=model_name, batch_size=batch_size, images=images, **generation_options):
                             if isinstance(chunk_data, dict):
                                 delta = chunk_data["delta"]
                             else:
@@ -96,7 +96,7 @@ async def responses_endpoint(request: Request):
         full_text = ""
         async with sem:
             async with browser_manager.lock:
-                async for chunk_data in checked_stream(prompt, resp_id, model_name=model_name, batch_size=batch_size, images=images):
+                async for chunk_data in checked_stream(prompt, resp_id, model_name=model_name, batch_size=batch_size, images=images, **generation_options):
                     if isinstance(chunk_data, dict):
                         full_text = chunk_data["text"]
                     else:
