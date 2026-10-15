@@ -588,7 +588,7 @@ class WebHookBrowserManager:
             await asyncio.sleep(0.5)
 
         if images and not run_active:
-            yield {"error": "[Error: IMAGE_TOKENIZATION_TIMEOUT - image processing did not enable Run]"}
+            yield {"error": "[Error: MEDIA_TOKENIZATION_TIMEOUT - media processing did not enable Run]"}
             return
 
         current_state = self.STATE_NO_RESPONSE_STARTED
