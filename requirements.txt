@@ -6,3 +6,4 @@ slowapi==0.1.9
 python-dotenv
 Pillow>=12.2.0,<13
 pypdf>=6.20.1,<7
+av>=19.0.1,<20

@@ -22,3 +22,17 @@ RATE_LIMIT = os.getenv("VIREL_RATE_LIMIT", "30/minute").strip()
 MAX_CONCURRENT = int(os.getenv("VIREL_MAX_CONCURRENT", "1"))
 PORT = int(os.getenv("PORT", "8001"))
 TARGET_URL = "https://aistudio.google.com/prompts/new_chat"
+
+
+def positive_setting(name, default):
+    value = int(os.getenv(name, str(default)))
+    if value < 1:
+        raise ValueError(f"{name} must be a positive integer.")
+    return value
+
+
+MAX_PDF_BYTES = positive_setting('VIREL_MAX_PDF_MB', 50) * 1024 * 1024
+MAX_PDF_PAGES = positive_setting('VIREL_MAX_PDF_PAGES', 1000)
+MAX_PDFS = positive_setting('VIREL_MAX_PDFS', 10)
+MAX_REQUEST_BYTES = positive_setting('VIREL_MAX_REQUEST_MB', 128) * 1024 * 1024
+MAX_AUDIO_BYTES = positive_setting('VIREL_MAX_AUDIO_MB', 25) * 1024 * 1024

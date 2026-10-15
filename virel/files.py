@@ -12,12 +12,10 @@ import tempfile
 import threading
 import time
 import uuid
-from .config import API_KEY, BASE_DIR, RUNTIME_DIR, TEMP_UPLOADS_DIR
+from .config import API_KEY, BASE_DIR, RUNTIME_DIR, TEMP_UPLOADS_DIR, MAX_PDF_BYTES, MAX_PDF_PAGES, MAX_PDFS
 from .errors import GatewayError
 from .images import _fetch_https
 
-MAX_PDFS = 2
-MAX_PDF_BYTES = 10 * 1024 * 1024
 MAX_STORED_FILES = 20
 MAX_STORED_BYTES = 100 * 1024 * 1024
 FILE_TTL = 3600
@@ -31,19 +29,20 @@ def require_file_key():
         raise GatewayError(503, 'Configure VIREL_API_KEY before using uploaded file IDs.', 'file_store_unavailable')
 
 
-def safe_filename(name):
-    if not isinstance(name, str) or not name or len(name) > 120 or name in ('.', '..') or any(ord(c) < 32 or ord(c) == 127 for c in name) or any(c in name for c in '/\\:') or not name.lower().endswith('.pdf'):
-        raise GatewayError(400, 'Use a plain PDF filename without paths or control characters.', 'invalid_file')
+def safe_filename(name, suffixes=(".pdf",)):
+    if not isinstance(name, str) or not name or len(name) > 120 or name in ('.', '..') or any(ord(c) < 32 or ord(c) == 127 for c in name) or any(c in name for c in '/\\:') or not name.lower().endswith(tuple(suffixes)):
+        raise GatewayError(400, 'Use a supported filename without paths or control characters.', 'invalid_file')
     return name
 
 
 async def validate_pdf(path):
-    data = Path(path).read_bytes()
-    if len(data) > MAX_PDF_BYTES:
-        raise GatewayError(413, 'PDF exceeds the 10 MiB limit.', 'file_too_large')
-    if not data.startswith(b'%PDF-'):
+    if Path(path).stat().st_size > MAX_PDF_BYTES:
+        raise GatewayError(413, f'PDF exceeds the {MAX_PDF_BYTES // (1024*1024)} MiB limit.', 'file_too_large')
+    with open(path, 'rb') as source:
+        header = source.read(5)
+    if header != b'%PDF-':
         raise GatewayError(400, 'File must contain a valid PDF.', 'invalid_file')
-    process = await asyncio.create_subprocess_exec(sys.executable, '-m', 'virel.pdf_validation', str(path),
+    process = await asyncio.create_subprocess_exec(sys.executable, '-m', 'virel.pdf_validation', str(path), str(MAX_PDF_PAGES), str(MAX_PDF_BYTES),
         cwd=BASE_DIR, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
     try:
         code = await asyncio.wait_for(process.wait(), timeout=10)
@@ -58,7 +57,7 @@ async def validate_pdf(path):
         await process.wait()
         raise GatewayError(400, 'PDF validation exceeded the allowed processing time.', 'invalid_file') from None
     if code == 3:
-        raise GatewayError(413, 'PDF must contain between 1 and 50 pages.', 'file_page_limit')
+        raise GatewayError(413, f'PDF must contain between 1 and {MAX_PDF_PAGES} pages.', 'file_page_limit')
     if code:
         message = 'Encrypted PDFs are not supported.' if code == 2 else 'PDF structure is corrupt or unsupported.'
         raise GatewayError(400, message, 'invalid_file')
@@ -137,7 +136,7 @@ async def save_uploaded(data, filename, purpose):
     if purpose not in ('user_data', 'assistants'):
         raise GatewayError(400, 'PDF uploads accept user_data or assistants purpose.', 'unsupported_capability')
     if len(data) > MAX_PDF_BYTES:
-        raise GatewayError(413, 'PDF exceeds the 10 MiB limit.', 'file_too_large')
+        raise GatewayError(413, f'PDF exceeds the {MAX_PDF_BYTES // (1024*1024)} MiB limit.', 'file_too_large')
     Path(TEMP_UPLOADS_DIR).mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='request-', dir=TEMP_UPLOADS_DIR) as tmp:
         path = Path(tmp)/'upload.pdf'
@@ -183,13 +182,13 @@ def _write_source(source, path):
                 raise GatewayError(400, 'PDF data URI must declare application/pdf base64.', 'invalid_file')
             encoded = value[len(prefix):]
         if len(encoded) > 4*((MAX_PDF_BYTES+2)//3):
-            raise GatewayError(413, 'PDF exceeds the 10 MiB limit.', 'file_too_large')
+            raise GatewayError(413, f'PDF exceeds the {MAX_PDF_BYTES // (1024*1024)} MiB limit.', 'file_too_large')
         try:
             data = base64.b64decode(encoded, validate=True)
         except (ValueError, binascii.Error):
             raise GatewayError(400, 'Invalid base64 PDF.', 'invalid_file') from None
     if len(data) > MAX_PDF_BYTES:
-        raise GatewayError(413, 'PDF exceeds the 10 MiB limit.', 'file_too_large')
+        raise GatewayError(413, f'PDF exceeds the {MAX_PDF_BYTES // (1024*1024)} MiB limit.', 'file_too_large')
     path.write_bytes(data)
     return str(path)
 
@@ -197,7 +196,7 @@ def _write_source(source, path):
 @asynccontextmanager
 async def prepared_pdfs(sources):
     if len(sources) > MAX_PDFS:
-        raise GatewayError(413, 'At most two PDFs are accepted per request.', 'too_many_files')
+        raise GatewayError(413, f'At most {MAX_PDFS} PDFs are accepted per request.', 'too_many_files')
     if not sources:
         yield []
         return

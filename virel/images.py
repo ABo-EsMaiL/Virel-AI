@@ -13,13 +13,12 @@ import tempfile
 import time
 from urllib.parse import urlsplit, quote
 from PIL import Image, UnidentifiedImageError
-from .config import TEMP_UPLOADS_DIR
+from .config import TEMP_UPLOADS_DIR, MAX_REQUEST_BYTES
 from .errors import GatewayError
 
 MAX_IMAGES = 4
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_IMAGE_PIXELS = 20_000_000
-MAX_REQUEST_BYTES = 32 * 1024 * 1024
 FORMATS = {'PNG': ('image/png', '.png'), 'JPEG': ('image/jpeg', '.jpg'), 'WEBP': ('image/webp', '.webp')}
 
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):
