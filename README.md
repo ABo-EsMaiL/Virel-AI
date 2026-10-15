@@ -70,9 +70,22 @@ Native n8n **Generate an Image** returns the actual PNG as binary data. Choose B
 
 Native **Edit an Image** accepts the original binary directly. Select `gpt-image-1`, Size=Auto and Quality=Auto. This is an explicit Virel compatibility selector for `DEFAULT_IMAGE_MODEL`, not GPT execution: n8n 2.3 hides the necessary edit input fields for Gemini IDs. Direct HTTP callers can use the actual Gemini ID with multipart `image` or `image[]` and `prompt` at `/v1/images/edits`.
 
-Both return one original PNG in `data[0].b64_json`, actual/requested model metadata and reported usage when available. Image-only responses are supported; screenshots and input images are never returned as generated output. Defaults:20 MiB output (`VIREL_MAX_GENERATED_IMAGE_MB`),20 million pixels; edit inputs retain the image-input limits above.
+Both return one image in `data[0].b64_json`, actual/requested model metadata and reported usage when available. Omit `output_format` (or use `auto`) to preserve the original model file byte-for-byte. Explicit `png`, `jpeg` or `webp` requests convert the final file on the server; `encoding` discloses original/output formats and whether conversion occurred. JPEG conversion uses quality100/no chroma subsampling by default; WebP defaults to lossless. Optional `output_compression`0–100 selects JPEG/WebP encoding quality. Transparent source pixels become white only when explicitly converting to JPEG.
 
-Supported options: `n=1`, `response_format=b64_json`, `quality=auto`, and `size=auto` or `1024x1024`. Exact square requests are verified against the returned dimensions. URL results, masks, quality tiers, transparency and other formats are unsupported. AI Studio can refuse an image request (including Image recitation block); Virel returns an error without substituting an older image. Available image models may lack Search/URL tools, and website/account limits still apply.
+| Option | Default and behavior |
+|---|---|
+| Text model / image model | `DEFAULT_MODEL=gemini-flash-latest` (observed UI alias); `DEFAULT_IMAGE_MODEL` is an eligible observed image model. Explicit model wins; no paid fallback. |
+| Thinking / temperature | `high` / `1`; HTTP image `reasoning_effort` and `temperature` override them when the selected UI model supports the values. |
+| Shape / resolution | `size=auto`, `aspect_ratio=Auto`, `resolution=1K`; offered ratios are verified in the UI. `size=1024x1024` enforces1:1/1K and actual1024square bytes. Lite exposes1K only. |
+| Advanced image controls | HTTP `top_p` defaults0.95; `max_output_tokens` defaults65536, capped by the current UI maximum. Explicit values must pass real UI bounds/readback. |
+| Original/output format | Default `auto` preserves the source. Explicit PNG/JPEG/WebP conversion uses existing Pillow; generation remains in AI Studio. |
+| Output limits | One image, base64/native binary;20MiB output (`VIREL_MAX_GENERATED_IMAGE_MB`),20million pixels; edit-input limits above. |
+
+HTTP example: `{"prompt":"A kite above a green hill","aspect_ratio":"16:9","temperature":0.4,"reasoning_effort":"minimal","output_format":"jpeg"}`. Image extensions not exposed by a native node require a client that actually sends them. Existing native n8n Generate/Edit work without conversion nodes.
+
+The installed n8n OpenAI2.3 Edit serializer does not send its visible Output Format/Compression fields. Virel handles these standard fields when received; a missing field preserves the original. n8n itself is unchanged. Its Generate node also hides many options for Gemini IDs. Server behavior cannot infer an unsent client selection.
+
+Quality tiers, pixel masks, guaranteed transparency, input fidelity, hosted output URLs, batches and arbitrary resized dimensions remain unavailable. They return field-specific errors with supported alternatives; quality is not silently mapped to resolution or thinking. AI Studio can refuse requests (recitation/safety), and available image models can lack Search/URL tools. Quota/rate-limit UI failures return429 with `upstream_rate_limit`; no automatic retries or stale/input image fallback.
 
 ## PDF input
 

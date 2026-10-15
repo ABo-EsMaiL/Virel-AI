@@ -11,7 +11,7 @@ from ..auth import verify_api_key
 from ..config import RATE_LIMIT
 from ..errors import GatewayError
 from ..generation import checked_stream, require_ready, usage_headers, response_model
-from ..image_output import image_options, decode_image_output
+from ..image_output import image_options, encode_image_output
 from ..images import MAX_IMAGE_BYTES, MAX_IMAGES
 from ..runtime import browser_manager, limiter, _get_semaphore
 
@@ -19,7 +19,7 @@ router = APIRouter(prefix='/v1/images', dependencies=[Depends(verify_api_key)])
 
 
 async def run_image(body, sources):
-    requested, model, prompt, size = image_options(body)
+    requested, model, prompt, size, options = image_options(body)
     sem = _get_semaphore()
     if sem.locked():
         raise GatewayError(429, 'Browser is processing another request.', 'concurrency_limit')
@@ -28,18 +28,18 @@ async def run_image(body, sources):
     async with sem:
         async with browser_manager.lock:
             uri = None
-            async for item in checked_stream(prompt, request_id, model_name=model, images=sources, output_kind='image', image_size=size):
+            async for item in checked_stream(prompt, request_id, model_name=model, images=sources, output_kind='image', image_size=size, image_settings=options, temperature=options.get('temperature'), reasoning_effort=options.get('reasoning_effort')):
                 if isinstance(item, dict) and item.get('image'):
                     uri = item['image']
-            data, fmt, dimensions = await asyncio.to_thread(decode_image_output, uri)
-            if fmt != 'PNG' or (size == '1024x1024' and dimensions != (1024, 1024)):
-                raise GatewayError(502, 'AI Studio image did not match the requested output format or size.', 'invalid_upstream_image')
+            data, dimensions, encoding = await asyncio.to_thread(encode_image_output, uri, options['output_format'], options.get('output_compression'))
+            if size == '1024x1024' and dimensions != (1024, 1024):
+                raise GatewayError(502, 'AI Studio image did not match the requested exact dimensions.', 'upstream_image_size_mismatch', param='size')
             actual = response_model(model)
             browser_manager.generated_models.add(actual)
             headers = usage_headers(request_id)
             headers.update({'X-Virel-Requested-Model': requested, 'X-Virel-Actual-Model': actual})
             return JSONResponse({'created': int(time.time()), 'model': actual, 'requested_model': requested,
-                'data': [{'b64_json': base64.b64encode(data).decode('ascii')}],
+                'data': [{'b64_json': base64.b64encode(data).decode('ascii')}], 'encoding': encoding,
                 'usage': browser_manager.last_usage.responses() if browser_manager.last_usage else None}, headers=headers)
 
 
@@ -56,7 +56,7 @@ async def generations(request: Request):
 @router.post('/edits')
 @limiter.limit(RATE_LIMIT)
 async def edits(request: Request):
-    async with request.form(max_files=MAX_IMAGES, max_fields=12) as form:
+    async with request.form(max_files=MAX_IMAGES, max_fields=24) as form:
         fields = [name for name in ('image', 'image[]') if name in form]
         if len(fields) != 1:
             raise GatewayError(400, 'Supply image or image[] uploads.', 'invalid_image')
