@@ -60,6 +60,8 @@ async def checked_stream(prompt, request_id, **options):
         async with prepared_images(image_sources) as image_paths, prepared_pdfs(pdf_sources) as pdf_paths:
             images, pdfs = iter(image_paths), iter(pdf_paths)
             paths = [next(pdfs) if isinstance(source, dict) else next(images) for source in sources]
+            # The audio route owns validation and lifetime of these private paths.
+            paths.extend(options.pop("attachments", []))
             async with aclosing(browser_manager.send_prompt_and_stream(prompt, request_id=request_id, images=paths, **options)) as stream:
                 async for item in stream:
                     current = item.get("text", "") if isinstance(item, dict) else item

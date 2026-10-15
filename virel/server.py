@@ -17,7 +17,7 @@ from slowapi.errors import RateLimitExceeded
 
 from .config import DEFAULT_MODEL, THINKING_MODE, CHROME_PROFILE_DIR, HEADLESS, PORT, MAX_CONCURRENT, RATE_LIMIT
 from .runtime import browser_manager, limiter, _get_semaphore
-from .routes import chat, responses, completions, system, files
+from .routes import chat, responses, completions, system, files, audio
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("virel.webhook")
@@ -34,7 +34,7 @@ class RequestSizeLimit:
         headers = dict(scope.get("headers", []))
         declared = headers.get(b"content-length")
         if declared is not None and (len(declared) > 10 or not declared.isdigit() or int(declared) > MAX_REQUEST_BYTES):
-            response = JSONResponse({"error": {"message": "Request body exceeds the 32 MiB limit or has invalid length.",
+            response = JSONResponse({"error": {"message": "Request body exceeds the configured byte limit or has invalid length.",
                 "type": "invalid_request_error", "code": "request_too_large"}}, status_code=413)
             return await response(scope, receive, send)
         body = bytearray()
@@ -44,7 +44,7 @@ class RequestSizeLimit:
                 return
             chunk = event.get("body", b"")
             if len(body) + len(chunk) > MAX_REQUEST_BYTES:
-                response = JSONResponse({"error": {"message": "Request body exceeds the 32 MiB limit.",
+                response = JSONResponse({"error": {"message": "Request body exceeds the configured byte limit.",
                     "type": "invalid_request_error", "code": "request_too_large"}}, status_code=413)
                 return await response(scope, receive, send)
             body.extend(chunk)
@@ -105,5 +105,5 @@ app.add_middleware(
 
 app.add_middleware(RequestSizeLimit)
 
-for route_module in (chat, responses, completions, system, files):
+for route_module in (chat, responses, completions, system, files, audio):
     app.include_router(route_module.router)
