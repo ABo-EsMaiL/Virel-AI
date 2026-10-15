@@ -13,8 +13,9 @@ from playwright.async_api import async_playwright, BrowserContext, Page
 from .config import (RUNTIME_DIR, CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, ENABLE_SEARCH_GROUNDING, ENABLE_URL_CONTEXT, TARGET_URL)
 from .dom import FETCH_RESPONSE_STATE
 from .usage import BrowserUsageObserver
-from .models import MODEL_SELECTOR, MODEL_ROWS, READ_MODEL_ROWS, catalog_from_rows, selected_id
+from .models import MODEL_SELECTOR, MODEL_ROWS, READ_MODEL_ROWS, catalog_from_rows, selected_id, IMAGE_MODEL_ICONS
 from .errors import GatewayError
+from .image_output import ensure_image_settings, read_image_output
 
 logger = logging.getLogger("virel.webhook")
 
@@ -155,17 +156,21 @@ class WebHookBrowserManager:
             await self.page.keyboard.press('Escape')
             await self.page.locator(MODEL_ROWS).first.wait_for(state='hidden', timeout=2000)
 
-    def require_model(self, identifier):
+    def require_model(self, identifier, output_kind="text"):
         item = self.model_catalog.get(identifier)
         if item is None:
             raise GatewayError(404, 'Requested model was not observed in the AI Studio catalog.', 'model_not_found')
         if item['status'] == 'unavailable':
             raise GatewayError(503, 'Requested UI model is disabled or requires paid access.', 'model_unavailable')
-        if item['status'] != 'selectable':
+        actual = self.model_catalog.get(item.get('resolved_id', identifier), item)
+        if actual['status'] == 'unavailable':
+            raise GatewayError(503, 'Resolved UI model is disabled or requires paid access.', 'model_unavailable')
+        allowed = IMAGE_MODEL_ICONS if output_kind == 'image' else {'spark'}
+        if item['status'] != 'selectable' or actual['capabilities']['ui_category_icon'] not in allowed:
             raise GatewayError(400, 'This model requires an output adapter that is not implemented.', 'unsupported_model_capability')
         return item
 
-    async def ensure_model(self, target_model: Optional[str] = None):
+    async def ensure_model(self, target_model: Optional[str] = None, output_kind="text"):
         """Select one exact observed card and verify the resulting canonical ID."""
         self.model_verified = False
         self.active_model = ''
@@ -184,7 +189,7 @@ class WebHookBrowserManager:
         try:
             if not self.model_catalog_observed or target_model not in self.model_catalog:
                 await self.refresh_model_catalog()
-            item = self.require_model(target_model)
+            item = self.require_model(target_model, output_kind=output_kind)
             expected = item.get('resolved_id', target_model)
             control = self.page.locator(MODEL_SELECTOR).first
             current = selected_id(await control.inner_text(), self.model_catalog)
@@ -196,7 +201,7 @@ class WebHookBrowserManager:
                         raise GatewayError(404, 'Requested model is no longer present.', 'model_not_found')
                     self.model_catalog = current_catalog
                     self.catalog_observed_at = int(time.time())
-                    item = self.require_model(target_model)
+                    item = self.require_model(target_model, output_kind=output_kind)
                     expected = item.get('resolved_id', target_model)
                     card = self.page.locator(MODEL_ROWS + '[id="model-carousel-row-models/' + target_model + '"]').first
                     if await card.is_disabled() or await card.get_attribute('aria-disabled') == 'true':
@@ -355,7 +360,7 @@ class WebHookBrowserManager:
             pass
         logger.info("Browser stopped.")
 
-    async def reset_chat_if_needed(self, model_name: Optional[str] = None) -> bool:
+    async def reset_chat_if_needed(self, model_name: Optional[str] = None, output_kind="text") -> bool:
         """Never replay caller history into a retained browser conversation."""
         if not self.page or self.page.is_closed() or self.is_shutting_down:
             return False
@@ -368,7 +373,7 @@ class WebHookBrowserManager:
                 logger.warning("Fresh-chat verification failed; refusing to reuse browser context.")
                 return False
             await self.page.keyboard.press("Escape")
-            await self.ensure_model(model_name)
+            await self.ensure_model(model_name, output_kind=output_kind)
             await self.ensure_thinking_mode()
             await self.ensure_tools(ENABLE_SEARCH_GROUNDING)
             await self.ensure_url_context()
@@ -397,7 +402,7 @@ class WebHookBrowserManager:
             "tier": f"trigger-driven ({case_count} cases)"
         }
 
-    async def send_prompt_and_stream(self, prompt, model_name=None, batch_size=None, enable_search=None, images=None, request_id=None, reasoning_effort=None, temperature=None):
+    async def send_prompt_and_stream(self, prompt, model_name=None, batch_size=None, enable_search=None, images=None, request_id=None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto"):
         attempt_id = request_id or uuid.uuid4().hex
         self.last_usage = None
         self.comparison_skipped = False
@@ -405,7 +410,7 @@ class WebHookBrowserManager:
         final_text = ""
         failed = False
         try:
-            async with aclosing(self._generate_in_page(prompt, model_name, batch_size, enable_search, images, reasoning_effort=reasoning_effort, temperature=temperature)) as stream:
+            async with aclosing(self._generate_in_page(prompt, model_name, batch_size, enable_search, images, reasoning_effort=reasoning_effort, temperature=temperature, output_kind=output_kind, image_size=image_size)) as stream:
                 async for item in stream:
                     if isinstance(item, dict):
                         failed |= "error" in item
@@ -413,7 +418,7 @@ class WebHookBrowserManager:
                     else:
                         final_text += item
                     yield item
-            if not failed and final_text.strip() and self.model_verified:
+            if output_kind == "text" and not failed and final_text.strip() and self.model_verified:
                 self.generated_models.add(self.active_model)
         finally:
             usage = await self.usage_observer.finish(attempt_id)
@@ -446,7 +451,7 @@ class WebHookBrowserManager:
             return False
 
     async def _generate_in_page(
-        self, prompt: str, model_name: Optional[str] = None, batch_size: Optional[int] = None, enable_search: Optional[bool] = None, images: Optional[List[str]] = None, reasoning_effort=None, temperature=None
+        self, prompt: str, model_name: Optional[str] = None, batch_size: Optional[int] = None, enable_search: Optional[bool] = None, images: Optional[List[str]] = None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto"
     ) -> AsyncGenerator[Union[dict, str], None]:
         """Injects the prompt (and optional images) into Google AI Studio and yields streaming text deltas."""
         t_req_start = time.time()
@@ -454,7 +459,7 @@ class WebHookBrowserManager:
             yield {"error": "[Error: Browser page not initialized or server is shutting down]"}
             return
 
-        if not await self.reset_chat_if_needed(model_name=model_name):
+        if not await self.reset_chat_if_needed(model_name=model_name, output_kind=output_kind):
             yield {"error": "[Error: RESET_FAILED - could not establish an empty chat]"}
             return
 
@@ -465,6 +470,8 @@ class WebHookBrowserManager:
         if reasoning_effort is not None:
             await self.ensure_thinking_mode(reasoning_effort)
         await self.ensure_temperature(temperature)
+        if output_kind == "image":
+            await ensure_image_settings(self.page, image_size)
 
         # Preserve the requested/current Google Search state.
         await self.ensure_tools(enable_search=enable_search)
@@ -626,6 +633,7 @@ class WebHookBrowserManager:
         )
 
 
+        previous_image_identity = None
         while (time.time() - t_submit) < t_cfg["hard_ceiling"]:
             now = time.time()
             elapsed = now - t_submit
@@ -650,6 +658,22 @@ class WebHookBrowserManager:
                     break
                 await asyncio.sleep(0.15)
                 continue
+
+            image_ready = False
+            if output_kind == "image":
+                image_state = await read_image_output(self.page, initial_model_count)
+                image_ready = image_state['ready']
+                if image_state['broken']:
+                    raise GatewayError(502, "AI Studio returned a broken image preview.", "invalid_upstream_image")
+                if image_state['identity'] != previous_image_identity:
+                    stability_start_time = None
+                    previous_image_identity = image_state['identity']
+                if image_state['count'] and not image_ready and not state.get('is_running'):
+                    stability_start_time = None
+                    if elapsed > t_cfg['initial_start_timeout']:
+                        raise GatewayError(504, "AI Studio image preview did not become ready.", "upstream_timeout")
+                    await asyncio.sleep(.15)
+                    continue
 
             current_text = state.get("text", "")
             is_running = state.get("is_running", False)
@@ -680,7 +704,7 @@ class WebHookBrowserManager:
             # 1. State: NO_RESPONSE_STARTED
             # ------------------------------------------------------------------
             if current_state == self.STATE_NO_RESPONSE_STARTED:
-                if is_running or new_model_turn_started or len(current_text) > 0:
+                if is_running or new_model_turn_started or len(current_text) > 0 or image_ready:
                     current_state = self.STATE_RESPONSE_IN_PROGRESS
                     t_turn_detected = now
                     t_last_growth = now
@@ -726,7 +750,7 @@ class WebHookBrowserManager:
                         # Wait stability_duration to allow final DOM flush.
                         # Only settle if we already have text OR if elapsed is > 5.0s.
                         # ------------------------------------------------------------------
-                        if len(current_text) == 0 and elapsed < 5.0:
+                        if len(current_text) == 0 and not image_ready and elapsed < 5.0:
                             stability_start_time = None
                         else:
                             if stability_start_time is None:
@@ -756,7 +780,10 @@ class WebHookBrowserManager:
         validation_error = None
         if current_state == self.STATE_RESPONSE_COMPLETED:
             trimmed_text = prev_text.strip()
-            if not trimmed_text:
+            if output_kind == "image":
+                output = await read_image_output(self.page, initial_model_count, include_data=True)
+                yield {"delta": "", "text": prev_text, "image": output['data']}
+            elif not trimmed_text:
                 validation_error = "EMPTY_RESPONSE: Model finished generating but no text was captured from DOM."
 
         if validation_error:

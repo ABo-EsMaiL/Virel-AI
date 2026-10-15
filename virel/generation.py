@@ -80,10 +80,11 @@ def _browser_error(text):
 async def checked_stream(prompt, request_id, **options):
     require_ready()
     if browser_manager.model_catalog_observed:
-        browser_manager.require_model(options.get("model_name") or DEFAULT_MODEL)
+        browser_manager.require_model(options.get("model_name") or DEFAULT_MODEL, output_kind=options.get("output_kind", "text"))
     browser_manager.last_usage = None
     browser_manager.last_timings = {}
     text = ""
+    has_image = False
     outcome = "failed"
     try:
         sources = options.pop("images", [])
@@ -101,11 +102,12 @@ async def checked_stream(prompt, request_id, **options):
                     if isinstance(item, dict) and "error" in item:
                         raise _browser_error(str(item["error"]))
                     if isinstance(item, dict):
+                        has_image |= bool(item.get("image")) and options.get("output_kind") == "image"
                         text = current
                     else:
                         text += item
                     yield item
-        if not text.strip():
+        if not text.strip() and not has_image:
             raise GatewayError(502, "AI Studio returned no response text.", "empty_upstream_response")
         outcome = "completed"
     except (TimeoutError, asyncio.TimeoutError):
