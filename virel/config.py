@@ -37,3 +37,7 @@ MAX_PDF_PAGES = positive_setting('VIREL_MAX_PDF_PAGES', 1000)
 MAX_PDFS = positive_setting('VIREL_MAX_PDFS', 10)
 MAX_REQUEST_BYTES = positive_setting('VIREL_MAX_REQUEST_MB', 128) * 1024 * 1024
 MAX_AUDIO_BYTES = positive_setting('VIREL_MAX_AUDIO_MB', 25) * 1024 * 1024
+
+MAX_VIDEO_BYTES = positive_setting("VIREL_MAX_VIDEO_MB", 50) * 1024 * 1024
+MAX_VIDEOS = positive_setting("VIREL_MAX_VIDEOS", 2)
+MAX_VIDEO_PIXELS = positive_setting("VIREL_MAX_VIDEO_PIXELS", 20_000_000)

@@ -85,6 +85,14 @@ In the native n8n Responses node, add Reasoning → Effort and set Summary to No
 
 ENABLE_URL_CONTEXT=true enables the current model's URL Context tool for links in prompts, alongside Google Search when configured. /health reports actual thinking, temperature and URL-tool verification. Tool availability and URL retrieval still depend on AI Studio and the selected model.
 
+## Video input
+
+MP4 and WebM video questions work through the native n8n Responses File Data field: connect the binary file directly, set its filename and add your text question. Virel passes the original video into AI Studio after validation and waits for upload/tokenization readiness. No conversion node or local video model is used.
+
+This is a Virel extension to input_file, not official OpenAI video compatibility. Chat file parts accept the same filename/file_data fields; identifiable direct public HTTPS file_url sources are also supported. Media-only HTTP requests get a description prompt; the native n8n node requires text. Stored video IDs, playlists, clipping and video generation are not implemented.
+
+Defaults:50 MiB/video,2 videos/request,20 million pixels/frame; configure VIREL_MAX_VIDEO_MB, VIREL_MAX_VIDEOS and VIREL_MAX_VIDEO_PIXELS. There is no separate duration cap. The HTTP body cap includes base64 overhead; website/model limits still apply. Validation samples a real frame in a bounded child process; request files are removed on completion/error/cancellation. Native MP4/H.264 and WebM/VP9 passed; other encodings and live URL transport need separate acceptance.
+
 ## Audio input
 
 Native n8n **Transcribe Audio** and **Translate Audio** operations work with ordinary OpenAI credentials pointed at Virel. Pass a binary audio file directly; transcription preserves the spoken language, translation returns English. Both use the AI Studio browser, not an external transcription service.

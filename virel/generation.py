@@ -5,6 +5,7 @@ import logging
 import math
 from .images import prepared_images
 from .files import prepared_pdfs
+from .video import is_video_source, prepared_videos
 from .config import DEFAULT_MODEL
 from .errors import GatewayError
 from .runtime import browser_manager
@@ -87,10 +88,11 @@ async def checked_stream(prompt, request_id, **options):
     try:
         sources = options.pop("images", [])
         image_sources = [source for source in sources if isinstance(source, str)]
-        pdf_sources = [source for source in sources if isinstance(source, dict)]
-        async with prepared_images(image_sources) as image_paths, prepared_pdfs(pdf_sources) as pdf_paths:
-            images, pdfs = iter(image_paths), iter(pdf_paths)
-            paths = [next(pdfs) if isinstance(source, dict) else next(images) for source in sources]
+        pdf_sources = [source for source in sources if isinstance(source, dict) and not is_video_source(source)]
+        video_sources = [source for source in sources if is_video_source(source)]
+        async with prepared_images(image_sources) as image_paths, prepared_pdfs(pdf_sources) as pdf_paths, prepared_videos(video_sources) as video_paths:
+            images, pdfs, videos = iter(image_paths), iter(pdf_paths), iter(video_paths)
+            paths = [next(videos) if is_video_source(source) else next(pdfs) if isinstance(source, dict) else next(images) for source in sources]
             # The audio route owns validation and lifetime of these private paths.
             paths.extend(options.pop("attachments", []))
             async with aclosing(browser_manager.send_prompt_and_stream(prompt, request_id=request_id, images=paths, **options)) as stream:

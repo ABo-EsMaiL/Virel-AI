@@ -5,6 +5,7 @@ from typing import Any, List, Tuple
 
 from .errors import GatewayError
 from .schemas import ChatMessage
+from .video import is_video_source
 
 
 def extract_prompt_and_images(messages: List[ChatMessage]) -> Tuple[str, List[Any]]:
@@ -40,18 +41,22 @@ def extract_prompt_and_images(messages: List[ChatMessage]) -> Tuple[str, List[An
                 elif part.get("type") == "file":
                     info = part.get("file")
                     if message.role != "user":
-                        raise GatewayError(400, "PDFs are accepted only in user messages.", "unsupported_capability")
+                        raise GatewayError(400, "Files are accepted only in user messages.", "unsupported_capability")
                     if not isinstance(info, dict):
-                        raise GatewayError(400, "A PDF file source is required.", "invalid_file")
+                        raise GatewayError(400, "A file source is required.", "invalid_file")
                     sources.append(info)
-                    text_parts.append(f"[Attached PDF {sum(isinstance(source, dict) for source in sources)}]")
+                    kind = "video" if is_video_source(info) else "PDF"
+                    text_parts.append(f"[Attached {kind} {len(sources)}]")
                 else:
                     raise GatewayError(400, "Unsupported message content type.", "unsupported_capability")
         else:
             raise GatewayError(400, "Message content must be text or supported parts.", "invalid_request")
         turns.append({"role": message.role, "content": "\n".join(text_parts)})
     if sources and not has_text:
-        prompt = "Describe the attached document." if any(isinstance(source, dict) for source in sources) else "Describe the attached image."
+        if any(is_video_source(source) for source in sources):
+            prompt = "Describe the attached video and any other attachments."
+        else:
+            prompt = "Describe the attached document." if any(isinstance(source, dict) for source in sources) else "Describe the attached image."
     elif not turns or not any(turn["content"].strip() for turn in turns):
         prompt = ""
     elif len(turns) == 1 and turns[0]["role"] == "user":
