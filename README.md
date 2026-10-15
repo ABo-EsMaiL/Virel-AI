@@ -2,7 +2,7 @@
 
 **A browser-backed AI gateway for Google AI Studio.**
 
-Virel AI accepts HTTP requests, submits them through Chromium, reads the visible response, and returns JSON or SSE. The gateway key authenticates your clients; generation uses the website interface.
+Virel AI accepts HTTP requests, submits them through Chromium, reads the visible response, and returns JSON, SSE or supported media files. The gateway key authenticates your clients; generation uses the website interface.
 
 ## Quick start
 
@@ -25,7 +25,7 @@ Use one worker. For n8n in Docker Desktop, listen on `0.0.0.0` and set its ordin
 
 ## Model selection
 
-GET /v1/models returns the last account-UI observation of selectable text and image model IDs. The ordinary n8n model picker uses those IDs directly. Paid, disabled and unimplemented output categories are excluded; each route checks the model category. Unknown capability fields remain null; appearing in the list does not guarantee quota or every modality.
+GET /v1/models returns the last account-UI observation of selectable text, image and speech model IDs. The ordinary n8n model picker uses those IDs directly. Paid, disabled and unimplemented output categories are excluded; each route checks the model category. Unknown capability fields remain null; appearing in the list does not guarantee quota or every modality.
 
 Send the exact model ID in a request. Virel verifies the browser selection before submitting; it never falls back to another model. Unknown IDs return404, unavailable selections503, unsupported categories400. Responses disclose actual model and requested_model separately when a UI alias resolves to a concrete model. The documented audio whisper-1 compatibility alias remains unchanged.
 
@@ -43,7 +43,7 @@ POST `/v1/chat/completions` with `Authorization: Bearer <VIREL_API_KEY>`:
 
 Read `choices[0].message.content`. Missing `stream` returns JSON; explicit `stream: true` uses the inherited SSE adapter. Responses text uses POST `/v1/responses` with `{"input":"Hello"}`. Reported usage is returned when observed; unavailable counts remain null.
 
-Native n8n OpenAI Chat 1.8 and Responses 2.3 text passed in raw and simplified modes. Clients own memory: send the complete ordered text history with each request. Virel replays it once in a verified fresh browser chat; it does not store conversations. History is a text transcript, not native provider role enforcement. Full streaming protocols, audio/video output and tools remain staged work. AI Studio changes and account limits can affect generation.
+Native n8n OpenAI Chat 1.8 and Responses 2.3 text passed in raw and simplified modes. Clients own memory: send the complete ordered text history with each request. Virel replays it once in a verified fresh browser chat; it does not store conversations. History is a text transcript, not native provider role enforcement. Full streaming protocols, video output and tools remain staged work. AI Studio changes and account limits can affect generation.
 
 ## Image input
 
@@ -126,9 +126,31 @@ Native n8n **Transcribe Audio** and **Translate Audio** operations work with ord
 
 POST /v1/audio/transcriptions or /v1/audio/translations with multipart file and model. Native n8n hardcodes whisper-1: Virel accepts it as a compatibility alias for DEFAULT_MODEL. Responses expose actual model and requested_model; Virel does not run Whisper. JSON returns text and observed usage; response_format=text returns plain text. Language hints are prompt guidance. Explicit temperature, timestamps, streaming and subtitle formats are unsupported.
 
-The validator accepts WAV, MP3/MPEG, M4A/audio-only MP4, OGG, FLAC and audio-only WebM containers, checks MIME/container consistency and decodes a sample before upload. WAV and MP3 passed through native n8n; other listed containers passed isolated decoder checks and still need browser acceptance for each encoding. Audio defaults to 25 MiB per file, configurable with VIREL_MAX_AUDIO_MB. There is no additional duration cap; website/model/context and processing deadlines still apply. Request files are removed on completion/error/cancellation. No stored-audio IDs or audio generation are implemented.
+The validator accepts WAV, MP3/MPEG, M4A/audio-only MP4, OGG, FLAC and audio-only WebM containers, checks MIME/container consistency and decodes a sample before upload. WAV and MP3 passed through native n8n; other listed containers passed isolated decoder checks and still need browser acceptance for each encoding. Audio defaults to 25 MiB per file, configurable with VIREL_MAX_AUDIO_MB. There is no additional duration cap; website/model/context and processing deadlines still apply. Request files are removed on completion/error/cancellation. No stored-audio IDs are implemented.
 
 Limits are positive gateway settings, not unlimited provider capacity. Raising them cannot override website/account/model limits; base64 also increases the request body size. PDF storage remains 20 files/100 MiB with one-hour expiry.
+
+## Speech output
+
+Native n8n **Generate Audio 2.3** returns real speech generated through AI Studio. POST `/v1/audio/speech`:
+
+```json
+{"model":"tts-1","input":"Hello from Virel AI.","voice":"alloy","response_format":"mp3","speed":1}
+```
+
+`tts-1` and `tts-1-hd` explicitly select `DEFAULT_SPEECH_MODEL=gemini-3.8-flash-tts`; both use the same actual model. These selectors do not run OpenAI TTS or promise an HD tier. Direct callers can send an eligible observed Gemini TTS ID. Actual/requested model and voice are disclosed in response headers.
+
+| Native voice selector | Actual AI Studio voice |
+|---|---|
+| `alloy` | `DEFAULT_SPEECH_VOICE=Fola` |
+| `echo` / `fable` / `nova` | Bodi / Koda / Lumi |
+| `onyx` / `shimmer` | Mako / Sola |
+
+These select Gemini voices, not reproductions of OpenAI voices. Direct callers can request an exact available UI voice name. Selection must be verified before Run; unavailable voices fail explicitly.
+
+Omitted `response_format`/`auto` preserves the original PCM16 mono24kHz WAV byte-for-byte at speed1. Native n8n requests MP3 by default. Explicit `mp3`, `opus` (Ogg), `aac` (ADTS), `flac`, `wav` or `pcm` (raw signed16LE mono24kHz) produce matching files. Existing PyAV performs only requested file encoding and pitch-preserving `speed`0.25–4; speech synthesis stays in the browser. `X-Virel-Source-Format`, `X-Virel-Output-Format`, `X-Virel-Audio-Speed` and `X-Virel-Audio-Processing` disclose processing.
+
+Defaults:4096input characters,50MiB source/output and600seconds source duration, configurable via `VIREL_MAX_SPEECH_CHARACTERS`, `VIREL_MAX_GENERATED_AUDIO_MB`, `VIREL_MAX_SPEECH_SECONDS`. A killable30second worker validates/encodes files; temporary files are removed on completion/error/cancellation. These limits cannot override AI Studio/account quotas. Reported counts use `X-Virel-Input-Tokens`, `X-Virel-Output-Tokens`, `X-Virel-Total-Tokens`; unavailable counts are omitted and provenance headers say unavailable/unknown. Streaming, instructions/style parameters, voice cloning, multiple speakers and text-model thinking/Search controls are unsupported by this route. No n8n patch or local TTS model is required.
 
 ## License
 

@@ -165,7 +165,9 @@ class WebHookBrowserManager:
         actual = self.model_catalog.get(item.get('resolved_id', identifier), item)
         if actual['status'] == 'unavailable':
             raise GatewayError(503, 'Resolved UI model is disabled or requires paid access.', 'model_unavailable')
-        allowed = IMAGE_MODEL_ICONS if output_kind == 'image' else {'spark'}
+        allowed = IMAGE_MODEL_ICONS if output_kind == 'image' else ({'audio_magic_eraser'} if output_kind == 'speech' else {'spark'})
+        if output_kind == 'speech' and actual['capabilities'].get('output_modalities') != ['audio']:
+            raise GatewayError(400, 'This is not an observed speech-output model.', 'unsupported_model_capability')
         if item['status'] != 'selectable' or actual['capabilities']['ui_category_icon'] not in allowed:
             raise GatewayError(400, 'This model requires an output adapter that is not implemented.', 'unsupported_model_capability')
         return item
@@ -366,14 +368,16 @@ class WebHookBrowserManager:
             return False
         try:
             await self.page.goto(TARGET_URL, timeout=30000, wait_until="domcontentloaded")
+            await self.page.keyboard.press("Escape")
+            await self.ensure_model(model_name, output_kind=output_kind)
+            if output_kind == 'speech':
+                return self.model_verified
             prompt = self.page.locator('.prompt-box-container textarea, textarea[formcontrolname="promptText"], textarea[aria-label*="prompt" i], textarea[placeholder*="Type" i]').last
             await prompt.wait_for(state="visible", timeout=8000)
             turns = self.page.locator('ms-chat-turn, .chat-turn-container, .chat-turn, [data-turn-role]')
             if await turns.count() or (await prompt.input_value()).strip():
                 logger.warning("Fresh-chat verification failed; refusing to reuse browser context.")
                 return False
-            await self.page.keyboard.press("Escape")
-            await self.ensure_model(model_name, output_kind=output_kind)
             await self.ensure_thinking_mode()
             await self.ensure_tools(ENABLE_SEARCH_GROUNDING)
             await self.ensure_url_context()
@@ -878,3 +882,16 @@ class WebHookBrowserManager:
             f"Stream finished in {elapsed_total:.2f}s | chars: {len(prev_text)} | "
             f"Valid JSON: {is_json}{json_err_msg}"
         )
+
+    async def generate_speech(self, text, model, voice, request_id):
+        """Caller owns the shared lock; speech has its own observed editor."""
+        from .speech import generate_in_speech_page
+        self.last_usage = None
+        self.last_timings = {}
+        self.usage_observer.begin(request_id, text)
+        try:
+            return await generate_in_speech_page(self, text, model, voice)
+        finally:
+            self.last_usage = await self.usage_observer.finish(request_id)
+            logger.info('Speech request %s model=%s usage=%s', request_id, self.active_model,
+                self.last_usage.responses() if self.last_usage else 'unavailable')
