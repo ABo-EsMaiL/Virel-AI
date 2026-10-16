@@ -138,21 +138,22 @@ FETCH_RESPONSE_STATE = '''(initialCount) => {
             const currentModelCount = modelTurns.length;
             const newModelTurnStarted = (currentModelCount > initialCount);
 
-            // Iterate backwards to find all consecutive model turns at the end of the chat
+            // A final answer can be an unlabelled chunk after its labelled thought turn.
             const modelTurnsToExtract = [];
             const newModelTurns = new Set(modelTurns.slice(initialCount));
-            for (let i = allTurns.length - 1; i >= 0; i--) {
-                const t = allTurns[i];
-                if (isUserTurn(t)) {
-                    break;
+            let inNewModelTurn = false;
+            for (const t of allTurns.slice(allTurns.findLastIndex(isUserTurn) + 1)) {
+                if (isModelTurn(t)) {
+                    inNewModelTurn = newModelTurns.has(t);
+                } else {
+                    inNewModelTurn = inNewModelTurn &&
+                        t.matches('ms-chat-turn.text-chunk-host') &&
+                        !t.getAttribute('data-turn-role') &&
+                        !t.querySelector('.author-label, .turn-author, .role-label, ms-author-label, ms-function-response-chunk') &&
+                        Boolean(t.querySelector('ms-text-chunk, ms-code-block, ms-code-chunk, .cmark-node, ms-function-call-chunk'));
                 }
-                if (isModelTurn(t) && newModelTurns.has(t)) {
-                    modelTurnsToExtract.push(t);
-                }
+                if (inNewModelTurn) modelTurnsToExtract.push(t);
             }
-
-            // They were collected backwards, so reverse them to chronological order
-            modelTurnsToExtract.reverse();
 
             // Only typed function components in new model turns are callable output.
             const functionCalls = newModelTurnStarted ? modelTurnsToExtract.flatMap(turn =>
