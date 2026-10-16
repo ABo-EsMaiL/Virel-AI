@@ -10,15 +10,26 @@ BATCH_NAME = "virel_client_tools"
 def batch_declaration(declarations):
     if not declarations:
         return []
-    variants = [{"type": "object", "properties": {
-        "name": {"type": "string", "enum": [fn["name"]]},
-        "arguments": fn["parameters"]}, "required": ["name", "arguments"]}
-        for fn in declarations]
-    items = variants[0] if len(variants) == 1 else {"type": "object", "anyOf": variants}
+    items = {"type": "object", "properties": {
+        fn["name"]: fn["parameters"] for fn in declarations}}
     return [{"name": BATCH_NAME,
-             "description": "Request all needed external client tools together in one native call. The client executes them and returns results in the same order. Never execute tools yourself.",
+             "description": "Request external tools in calls order. Each array entry has exactly one property: the tool name with its arguments object. Use separate entries for multiple calls, including repeated tools. The external client executes them; never execute tools yourself.",
              "parameters": {"type": "object", "properties": {
                  "calls": {"type": "array", "items": items}}, "required": ["calls"]}}]
+
+
+def unpack_calls(calls):
+    if not isinstance(calls, list):
+        raise GatewayError(502, "The native client calls must be an array.", "invalid_upstream_tool_call")
+    result = []
+    for entry in calls:
+        if not isinstance(entry, dict) or len(entry) != 1:
+            raise GatewayError(502, "Each native client call must contain exactly one tool name.", "invalid_upstream_tool_call")
+        name, value = next(iter(entry.items()))
+        if not isinstance(value, dict):
+            raise GatewayError(502, "Native client tool arguments must be a JSON object.", "invalid_upstream_tool_call")
+        result.append({"name": name, "arguments": value})
+    return result
 
 
 async def disable_structured(page):
