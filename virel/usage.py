@@ -121,14 +121,18 @@ class BrowserUsageObserver:
 
     async def finish(self, attempt_id):
         owned = [task for task, owner in self.pending.items() if owner == attempt_id]
-        if owned:
-            _, unfinished = await asyncio.wait(owned, timeout=2)
-            for task in unfinished:
-                task.cancel()
-        if self.active_id != attempt_id:
-            return None
-        usage = self.last_usage
-        self.active_id = None
-        self.prompt = ""
-        self.requests.clear()
+        usage = None
+        try:
+            if owned:
+                await asyncio.wait(owned, timeout=2)
+        finally:
+            for task in owned:
+                if not task.done():
+                    task.cancel()
+                self.pending.pop(task, None)
+            if self.active_id == attempt_id:
+                usage = self.last_usage
+                self.active_id = None
+                self.prompt = ""
+                self.requests.clear()
         return usage

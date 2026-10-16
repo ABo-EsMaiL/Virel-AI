@@ -1,6 +1,7 @@
 """Checked browser results shared by protocol adapters."""
 import asyncio
 from contextlib import aclosing
+from anyio import CancelScope
 import logging
 import math
 from .images import prepared_images
@@ -116,9 +117,19 @@ async def checked_stream(prompt, request_id, **options):
         if not text.strip() and not has_image and not has_functions:
             raise GatewayError(502, "AI Studio returned no response text.", "empty_upstream_response")
         outcome = "completed"
+    except (asyncio.CancelledError, GeneratorExit):
+        with CancelScope(shield=True):
+            await browser_manager.cancel_generation()
+        outcome = "cancelled"
+        raise
     except (TimeoutError, asyncio.TimeoutError):
+        with CancelScope(shield=True):
+            await browser_manager.cancel_generation()
         raise GatewayError(504, "AI Studio generation timed out.", "upstream_timeout") from None
-    except GatewayError:
+    except GatewayError as error:
+        if error.status_code == 504:
+            with CancelScope(shield=True):
+                await browser_manager.cancel_generation()
         raise
     except Exception:
         raise GatewayError(502, "The browser generation failed.", "upstream_error") from None

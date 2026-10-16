@@ -1,5 +1,6 @@
 """Validated client-owned function contracts. Tools are executed only by the caller."""
 import json
+from contextlib import aclosing
 import re
 import time
 import uuid
@@ -12,6 +13,7 @@ from .errors import GatewayError
 from .config import MAX_REQUEST_BYTES
 from .tool_runs import digest
 from .tool_batch import BATCH_NAME, batch_declaration, unpack_calls
+from .streaming import read_text, stream_response, validate_stream
 
 NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_-]{0,63}\Z")
 SCHEMA_KEYS = {"type", "properties", "required", "items", "description", "enum", "additionalProperties",
@@ -118,13 +120,12 @@ def prepare_tools(body, responses):
     allowed = {"model", "messages", "input", "instructions", "stream", "tools", "tool_choice", "parallel_tool_calls",
                "functions", "function_call", "temperature", "reasoning_effort", "reasoning", "text", "store", "n",
                "max_tokens", "max_completion_tokens", "max_output_tokens", "top_p", "response_format",
-               "conversation", "previous_response_id", "background", "include", "prompt"}
+               "conversation", "previous_response_id", "background", "include", "prompt", "stream_options"}
     if set(body) - allowed:
         fail("Unsupported function request fields.", unsupported=True)
     if "store" in body and body["store"] is not False:
         fail("Response storage is unavailable; supply full caller history.", unsupported=True)
-    if body.get("stream", False) is not False:
-        fail("Function streaming is not implemented; use stream:false.", unsupported=True)
+    validate_stream(body, responses)
     if "functions" in body or "function_call" in body:
         fail("Legacy functions/function_call are unsupported; use tools/tool_choice.", unsupported=True)
     if "parallel_tool_calls" in body and not isinstance(body["parallel_tool_calls"], bool):
@@ -243,16 +244,31 @@ def validate_calls(calls, plan):
 
 async def function_response(body, responses, sem, owner=""):
     from .config import DEFAULT_MODEL
-    from .generation import checked_stream, validate_options, require_ready, usage_headers, response_model
-    from .runtime import browser_manager
+    from .generation import validate_options, require_ready
     plan = prepare_tools(body, responses)
-    ordinary = {k: v for k, v in body.items() if k not in ("tools", "tool_choice", "parallel_tool_calls")}
+    ordinary = {k: v for k, v in body.items() if k not in ("tools", "tool_choice", "parallel_tool_calls", "stream_options")}
     if ordinary.get("text") == {}: ordinary.pop("text")
     options = validate_options(ordinary)
     if body.get("prompt"): fail("Reusable prompt templates are unavailable.", unsupported=True)
     require_ready()
     identifier = ("resp_" if responses else "chatcmpl-") + uuid.uuid4().hex[:16]
-    now, model, text = int(time.time()), body.get("model", DEFAULT_MODEL), ""
+    now, model = int(time.time()), body.get("model", DEFAULT_MODEL)
+    events = _function_events(plan, options, sem, owner, identifier, now, model, responses, body.get("stream", False))
+    if body.get("stream", False):
+        return stream_response(events, responses, identifier, now, model, validate_stream(body, responses),
+            headers={"X-Virel-Tool-Execution": "client", "X-Virel-Tool-Transport": "native_function_batch", "X-Virel-Tool-Arguments": "validated_complete"})
+    final = None
+    async with aclosing(events):
+        async for item in events:
+            if "response" in item:
+                final = item
+    return JSONResponse(final["response"], headers=final["headers"])
+
+
+async def _function_events(plan, options, sem, owner, identifier, now, model, responses, live):
+    from .generation import checked_stream, usage_headers, response_model
+    from .runtime import browser_manager
+    text = ""
     async with sem:
         async with browser_manager.lock:
             caller = digest(owner.split()[-1] if owner.split() else "")
@@ -269,12 +285,17 @@ async def function_response(body, responses, sem, owner=""):
             raw_calls = []
             native_envelope = None
             try:
-                async for item in checked_stream(prompt, identifier, model_name=model, function_settings=batch_declaration(plan["declarations"]), continuation=continuation, enable_search=False if plan["declarations"] else None, **options):
-                    if isinstance(item, dict):
-                        text = item.get("text", text)
-                        raw_calls = item.get("function_calls", raw_calls)
-                    else:
-                        text += item
+                async with aclosing(checked_stream(prompt, identifier, model_name=model, function_settings=batch_declaration(plan["declarations"]), continuation=continuation, enable_search=False if plan["declarations"] else None, **options)) as source:
+                    async for item in source:
+                        if live:
+                            text, delta = read_text(item, text)
+                        else:
+                            text = item.get("text", text) if isinstance(item, dict) else text + item
+                            delta = ""
+                        if isinstance(item, dict):
+                            raw_calls = item.get("function_calls", raw_calls)
+                        if delta:
+                            yield {"delta": delta, "model": response_model(model)}
                 if raw_calls:
                     if len(raw_calls) != 1 or raw_calls[0].get("name") != BATCH_NAME:
                         fail("AI Studio did not return the single native client-tool batch envelope.", True)
@@ -308,4 +329,8 @@ async def function_response(body, responses, sem, owner=""):
                 payload = {"id": identifier, "object": "chat.completion", "created": now, "model": response_model(model), "requested_model": model,
                            "choices": [{"index": 0, "message": message, "finish_reason": "tool_calls" if calls else "stop"}],
                            "usage": browser_manager.last_usage.chat() if browser_manager.last_usage else None}
-            return JSONResponse(payload, headers=headers)
+            try:
+                yield {"response": payload, "headers": headers, "pending": browser_manager.tool_run.pending}
+            except BaseException:
+                browser_manager.tool_run.clear()
+                raise

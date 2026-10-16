@@ -1,14 +1,14 @@
 """Current Responses compatibility adapter; not full native Responses."""
 
-import json
 import logging
 import time
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from ..tools import is_tool_request, function_response
+from ..streaming import stream_response, text_events, validate_stream
 from ..auth import verify_api_key
-from ..errors import GatewayError, provider_error
+from ..errors import GatewayError
 from ..generation import checked_stream, require_ready, validate_options, usage_headers, response_model
 from ..config import DEFAULT_MODEL, RATE_LIMIT
 from ..runtime import browser_manager, limiter, _get_semaphore
@@ -36,6 +36,7 @@ async def responses_endpoint(request: Request):
     body = await request.json()
     if not isinstance(body, dict):
         raise GatewayError(400, "Expected a JSON object.", "invalid_request")
+    validate_stream(body, responses=True)
     if is_tool_request(body):
         return await function_response(body, True, sem, owner=request.headers.get("authorization", ""))
     generation_options = validate_options(body)
@@ -56,45 +57,8 @@ async def responses_endpoint(request: Request):
     resp_id = f"resp_{uuid.uuid4().hex[:16]}"
 
     if stream:
-        async def sse_response_generator():
-            try:
-                async with sem:
-                    async with browser_manager.lock:
-                        async for chunk_data in checked_stream(prompt, resp_id, model_name=model_name, batch_size=batch_size, images=images, **generation_options):
-                            if isinstance(chunk_data, dict):
-                                delta = chunk_data["delta"]
-                            else:
-                                delta = chunk_data
-
-                            if delta:
-                                chunk = {
-                                    "id": resp_id,
-                                    "object": "response.chunk",
-                                    "created_at": now,
-                                    "model": response_model(model_name),
-                                    "requested_model": model_name,
-                                    "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}],
-                                    "output": [{"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": delta, "annotations": []}]}]
-                                }
-                                yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
-                        done_chunk = {
-                            "id": resp_id,
-                            "object": "response.done",
-                            "created_at": now,
-                            "model": response_model(model_name),
-                            "requested_model": model_name,
-                            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
-                        }
-                        yield f"data: {json.dumps(done_chunk, ensure_ascii=False)}\n\n"
-                        yield "data: [DONE]\n\n"
-            except GatewayError as exc:
-                yield f"data: {json.dumps({'error': provider_error(exc)})}\n\n"
-
-        return StreamingResponse(
-            sse_response_generator(),
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
-        )
+        return stream_response(text_events(prompt, resp_id, now, model_name, True, sem,
+            batch_size=batch_size, images=images, **generation_options), True, resp_id, now, model_name)
     else:
         full_text = ""
         async with sem:

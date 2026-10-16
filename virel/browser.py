@@ -358,6 +358,23 @@ class WebHookBrowserManager:
             logger.warning(f"Failed to ensure tools state: {e}")
             self.search_verified = False
 
+    async def cancel_generation(self):
+        """The caller holds browser ownership until navigation aborts the current page."""
+        self.tool_run.clear()
+        self.last_usage = None
+        self.model_verified = False
+        self.thinking_verified = False
+        self.temperature_verified = False
+        self.search_verified = False
+        self.url_context_verified = False
+        self.last_batch_turn = ""
+        try:
+            if self.page and not self.page.is_closed():
+                await self.page.goto("about:blank", wait_until="commit", timeout=5000)
+        except Exception:
+            self.is_ready = False
+            logger.warning("Cancelled generation could not release its page; browser marked unavailable.")
+
     async def stop(self):
         self.tool_run.clear()
         logger.info("Closing browser context...")
