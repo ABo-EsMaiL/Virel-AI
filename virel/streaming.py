@@ -151,4 +151,4 @@ def stream_response(source, responses, identifier, now, model, include_usage=Fal
             raise
     return StreamingResponse(serialize(), media_type="text/event-stream", headers={
         "Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Request-ID": identifier,
-        "X-Virel-Usage-Delivery": "final_event", **(headers or {})})
+        "X-Virel-Usage-Delivery": "final_event", "X-Virel-Text-Delivery": "completed_browser_snapshot", **(headers or {})})

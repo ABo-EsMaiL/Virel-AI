@@ -445,17 +445,20 @@ class WebHookBrowserManager:
         self.last_batch_turn = ""
         self.usage_observer.begin(attempt_id, prompt)
         final_text = ""
-        failed = False
+        result = {}
         try:
             async with aclosing(self._generate_in_page(prompt, model_name, batch_size, enable_search, images, reasoning_effort=reasoning_effort, temperature=temperature, output_kind=output_kind, image_size=image_size, image_settings=image_settings, function_settings=function_settings, continuation=continuation)) as stream:
                 async for item in stream:
                     if isinstance(item, dict):
-                        failed |= "error" in item
+                        if "error" in item:
+                            yield item
+                            return
+                        result.update(item)
                         final_text = item.get("text", final_text)
                     else:
                         final_text += item
-                    yield item
-            if output_kind == "text" and not failed and final_text.strip() and self.model_verified:
+                    # Rendered Markdown can replace earlier text; it is not an append-only stream.
+            if output_kind == "text" and final_text.strip() and self.model_verified:
                 self.generated_models.add(self.active_model)
         finally:
             try:
@@ -465,6 +468,7 @@ class WebHookBrowserManager:
                 logger.debug("Generation error watcher cleanup failed.")
             usage = await self.usage_observer.finish(attempt_id)
             self.last_usage = None if self.comparison_skipped else usage
+        yield {**result, "text": final_text, "delta": final_text}
 
     async def attach_files(self, paths: List[str]) -> bool:
         """Do not run until all current-request attachment chips are ready."""
@@ -795,12 +799,12 @@ class WebHookBrowserManager:
                     t_first_token = now
                     logger.info(f"[{case_count} cases] First token/character detected at {t_first_token - t_submit:.2f}s (len: {len(current_text)})")
 
-                # Character growth detection
-                if len(current_text) > len(prev_text):
-                    delta = current_text[len(prev_text):]
+                # Rendering can also shorten or replace the current snapshot.
+                if current_text != prev_text:
+                    delta = current_text[len(prev_text):] if current_text.startswith(prev_text) else ""
                     prev_text = current_text
                     t_last_growth = now
-                    stability_start_time = None  # Reset stability timer when text actively grows
+                    stability_start_time = None
                     yield {"delta": delta, "text": current_text}
                 else:
                     # No character growth on this tick
