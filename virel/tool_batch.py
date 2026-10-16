@@ -14,7 +14,7 @@ def batch_declaration(declarations):
         "name": {"type": "string", "enum": [fn["name"]]},
         "arguments": fn["parameters"]}, "required": ["name", "arguments"]}
         for fn in declarations]
-    items = variants[0] if len(variants) == 1 else {"anyOf": variants}
+    items = variants[0] if len(variants) == 1 else {"type": "object", "anyOf": variants}
     return [{"name": BATCH_NAME,
              "description": "Request all needed external client tools together in one native call. The client executes them and returns results in the same order. Never execute tools yourself.",
              "parameters": {"type": "object", "properties": {
