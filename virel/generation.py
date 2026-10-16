@@ -62,6 +62,8 @@ def validate_options(body):
 
 
 def _browser_error(text):
+    if any(marker in text.lower() for marker in ("model isn't available right now", "model isn’t available right now", "model is not available right now", "model is currently unavailable", "model is overloaded", "service unavailable")):
+        return GatewayError(503, "AI Studio reports that the model is temporarily unavailable. Try again later; no gateway retry or model fallback was made.", "upstream_unavailable")
     if any(marker in text.lower() for marker in ("quota exceeded", "daily limit of requests", "reached your rate limit")):
         return GatewayError(429, "AI Studio quota or rate limit reached. Wait for the provider reset; no automatic retry was made.", "upstream_rate_limit")
     if "MODEL_NOT_FOUND" in text:

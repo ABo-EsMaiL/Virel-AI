@@ -52,9 +52,16 @@ def catalog_from_rows(rows):
     return result
 
 
-def selected_id(label, catalog):
+def selected_card_id(label, catalog):
     identifiers = [line.strip() for line in label.splitlines() if line.strip() in catalog]
     if len(identifiers) != 1:
         return None
-    item = catalog[identifiers[0]]
+    return identifiers[0]
+
+
+def selected_id(label, catalog):
+    identifier = selected_card_id(label, catalog)
+    if identifier is None:
+        return None
+    item = catalog[identifier]
     return item.get('resolved_id', item['id'])
