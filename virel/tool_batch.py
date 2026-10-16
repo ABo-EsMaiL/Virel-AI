@@ -7,15 +7,18 @@ from .tool_runs import digest
 BATCH_NAME = "virel_client_tools"
 
 
-def batch_declaration(names):
-    if not names:
+def batch_declaration(declarations):
+    if not declarations:
         return []
+    variants = [{"type": "object", "properties": {
+        "name": {"type": "string", "enum": [fn["name"]]},
+        "arguments": fn["parameters"]}, "required": ["name", "arguments"]}
+        for fn in declarations]
+    items = variants[0] if len(variants) == 1 else {"anyOf": variants}
     return [{"name": BATCH_NAME,
              "description": "Request all needed external client tools together in one native call. The client executes them and returns results in the same order. Never execute tools yourself.",
-             "parameters": {"type": "object", "properties": {"calls": {"type": "array", "items": {
-                 "type": "object", "properties": {"name": {"type": "string", "enum": names},
-                 "arguments": {"type": "string", "description": "Arguments as a JSON object encoded as a string"}},
-                 "required": ["name", "arguments"]}}}, "required": ["calls"]}}]
+             "parameters": {"type": "object", "properties": {
+                 "calls": {"type": "array", "items": items}}, "required": ["calls"]}}]
 
 
 async def disable_structured(page):
