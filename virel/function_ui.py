@@ -14,8 +14,10 @@ async def disable_functions(page):
 def _canonical(value):
     if isinstance(value, list): return [_canonical(item) for item in value]
     if isinstance(value, dict):
+        # AI Studio omits the empty properties map on zero-argument objects.
         return {k: _canonical(v) for k, v in value.items()
-                if not (k == "propertyOrdering" and value.get("type") == "object")}
+                if not (value.get("type") == "object" and
+                        (k == "propertyOrdering" or (k == "properties" and v == {})))}
     return value
 
 
@@ -48,10 +50,10 @@ async def ensure_functions(page, declarations):
         await edit.click(timeout=5000)
         await dialog.get_by_text('Code Editor', exact=True).click(timeout=5000)
         observed = json.loads(await editor.input_value())
-        if _canonical(observed) != declarations:
-            raise GatewayError(503, "AI Studio function declarations did not match the request.", "settings_unavailable")
         await dialog.locator('button[aria-label="close"]').click(timeout=5000)
         await dialog.wait_for(state='hidden', timeout=5000)
+        if _canonical(observed) != _canonical(declarations):
+            raise GatewayError(503, "AI Studio function declarations did not match the request.", "settings_unavailable")
     except GatewayError:
         raise
     except Exception:
