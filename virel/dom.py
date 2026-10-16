@@ -109,12 +109,13 @@ FETCH_RESPONSE_STATE = '''(initialCount) => {
 
             // Iterate backwards to find all consecutive model turns at the end of the chat
             const modelTurnsToExtract = [];
+            const newModelTurns = new Set(modelTurns.slice(initialCount));
             for (let i = allTurns.length - 1; i >= 0; i--) {
                 const t = allTurns[i];
                 if (isUserTurn(t)) {
                     break;
                 }
-                if (isModelTurn(t)) {
+                if (isModelTurn(t) && newModelTurns.has(t)) {
                     modelTurnsToExtract.push(t);
                 }
             }
@@ -123,11 +124,11 @@ FETCH_RESPONSE_STATE = '''(initialCount) => {
             modelTurnsToExtract.reverse();
 
             // Only typed function components in new model turns are callable output.
-            const functionCalls = newModelTurnStarted ? modelTurns.slice(initialCount).flatMap(turn =>
+            const functionCalls = newModelTurnStarted ? modelTurnsToExtract.flatMap(turn =>
                 Array.from(turn.querySelectorAll('ms-function-call-chunk')).filter(chunk =>
                     !chunk.closest('ms-thought-chunk, .thought-activity-host')).map(chunk => ({
                         name: (chunk.querySelector('.title-text')?.textContent || '').trim().slice(0, 65),
-                        arguments: (chunk.querySelector('pre code')?.textContent || '').slice(0, 65537)
+                        arguments: (chunk.querySelector('pre code')?.textContent || '')
                     }))) : [];
 
             // Extract text from these model turns
@@ -174,6 +175,7 @@ FETCH_RESPONSE_STATE = '''(initialCount) => {
             }
 
             return {
+                model_turn_id: modelTurnsToExtract.at(-1)?.id || "",
                 function_calls: functionCalls,
                 text: fullText.trim(),
                 is_running: isRunning,
