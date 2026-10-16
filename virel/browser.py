@@ -10,9 +10,11 @@ from contextlib import aclosing
 from typing import AsyncGenerator, List, Optional, Union
 from playwright.async_api import async_playwright, BrowserContext, Page
 
-from .config import (RUNTIME_DIR, CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, ENABLE_SEARCH_GROUNDING, ENABLE_URL_CONTEXT, TARGET_URL)
+from .config import (RUNTIME_DIR, CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, ENABLE_SEARCH_GROUNDING, ENABLE_URL_CONTEXT, TARGET_URL, TOOL_RUN_TTL_SECONDS)
 from .dom import FETCH_RESPONSE_STATE
 from .function_ui import disable_functions, ensure_functions
+from .tool_batch import disable_structured, verify_continuation, prepare_result
+from .tool_runs import ToolRun
 from .usage import BrowserUsageObserver
 from .models import MODEL_SELECTOR, MODEL_ROWS, READ_MODEL_ROWS, catalog_from_rows, selected_id, IMAGE_MODEL_ICONS
 from .errors import GatewayError
@@ -46,6 +48,8 @@ class WebHookBrowserManager:
         self.google_search_enabled = False
         self.search_verified = False
         self.last_tool_calls_count = 0
+        self.tool_run = ToolRun(TOOL_RUN_TTL_SECONDS)
+        self.last_batch_turn = ""
         self.last_usage = None
         self.comparison_skipped = False
         self.usage_observer = BrowserUsageObserver()
@@ -130,6 +134,7 @@ class WebHookBrowserManager:
         await self.ensure_model(DEFAULT_MODEL)
         await self.ensure_thinking_mode()
         await disable_functions(self.page)
+        await disable_structured(self.page)
         await self.ensure_tools(ENABLE_SEARCH_GROUNDING)
         await self.ensure_url_context()
         self.is_ready = self.model_catalog_observed
@@ -140,6 +145,7 @@ class WebHookBrowserManager:
 
     async def refresh_model_catalog(self):
         """Caller owns the browser lock; publish only complete observations."""
+        self.tool_run.require_idle()
         if not self.page or self.page.is_closed() or self.is_shutting_down:
             raise GatewayError(503, 'AI Studio model picker is unavailable.', 'model_catalog_unavailable')
         try:
@@ -349,6 +355,7 @@ class WebHookBrowserManager:
             self.search_verified = False
 
     async def stop(self):
+        self.tool_run.clear()
         logger.info("Closing browser context...")
         self.is_shutting_down = True
         self.is_ready = False
@@ -382,6 +389,7 @@ class WebHookBrowserManager:
                 return False
             await self.ensure_thinking_mode()
             await disable_functions(self.page)
+            await disable_structured(self.page)
             await self.ensure_tools(ENABLE_SEARCH_GROUNDING)
             await self.ensure_url_context()
             return True
@@ -409,15 +417,16 @@ class WebHookBrowserManager:
             "tier": f"trigger-driven ({case_count} cases)"
         }
 
-    async def send_prompt_and_stream(self, prompt, model_name=None, batch_size=None, enable_search=None, images=None, request_id=None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto", image_settings=None, function_settings=None):
+    async def send_prompt_and_stream(self, prompt, model_name=None, batch_size=None, enable_search=None, images=None, request_id=None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto", image_settings=None, function_settings=None, continuation=None):
         attempt_id = request_id or uuid.uuid4().hex
         self.last_usage = None
         self.comparison_skipped = False
+        self.last_batch_turn = ""
         self.usage_observer.begin(attempt_id, prompt)
         final_text = ""
         failed = False
         try:
-            async with aclosing(self._generate_in_page(prompt, model_name, batch_size, enable_search, images, reasoning_effort=reasoning_effort, temperature=temperature, output_kind=output_kind, image_size=image_size, image_settings=image_settings, function_settings=function_settings)) as stream:
+            async with aclosing(self._generate_in_page(prompt, model_name, batch_size, enable_search, images, reasoning_effort=reasoning_effort, temperature=temperature, output_kind=output_kind, image_size=image_size, image_settings=image_settings, function_settings=function_settings, continuation=continuation)) as stream:
                 async for item in stream:
                     if isinstance(item, dict):
                         failed |= "error" in item
@@ -458,7 +467,7 @@ class WebHookBrowserManager:
             return False
 
     async def _generate_in_page(
-        self, prompt: str, model_name: Optional[str] = None, batch_size: Optional[int] = None, enable_search: Optional[bool] = None, images: Optional[List[str]] = None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto", image_settings=None, function_settings=None
+        self, prompt: str, model_name: Optional[str] = None, batch_size: Optional[int] = None, enable_search: Optional[bool] = None, images: Optional[List[str]] = None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto", image_settings=None, function_settings=None, continuation=None
     ) -> AsyncGenerator[Union[dict, str], None]:
         """Injects the prompt (and optional images) into Google AI Studio and yields streaming text deltas."""
         t_req_start = time.time()
@@ -466,32 +475,38 @@ class WebHookBrowserManager:
             yield {"error": "[Error: Browser page not initialized or server is shutting down]"}
             return
 
-        if not await self.reset_chat_if_needed(model_name=model_name, output_kind=output_kind):
-            yield {"error": "[Error: RESET_FAILED - could not establish an empty chat]"}
-            return
+        if continuation is not None:
+            model_count = await self.page.locator("ms-chat-turn .model-prompt-container").count()
+            state = await self.page.evaluate(FETCH_RESPONSE_STATE, max(0, model_count - 1))
+            await verify_continuation(self.page, continuation, state)
+        else:
+            self.tool_run.require_idle()
+            if not await self.reset_chat_if_needed(model_name=model_name, output_kind=output_kind):
+                yield {"error": "[Error: RESET_FAILED - could not establish an empty chat]"}
+                return
 
-        if not self.model_verified:
-            yield {"error": "[Error: " + self.model_error + " - requested model is not verified]"}
-            return
+            if not self.model_verified:
+                yield {"error": "[Error: " + self.model_error + " - requested model is not verified]"}
+                return
 
-        if reasoning_effort is not None:
-            await self.ensure_thinking_mode(reasoning_effort)
-        await self.ensure_temperature(temperature)
-        if output_kind == "image":
-            await ensure_image_settings(self.page, image_size, image_settings)
+            if reasoning_effort is not None:
+                await self.ensure_thinking_mode(reasoning_effort)
+            await self.ensure_temperature(temperature)
+            if output_kind == "image":
+                await ensure_image_settings(self.page, image_size, image_settings)
 
-        if function_settings is not None:
-            await ensure_functions(self.page, function_settings)
-            self.google_search_enabled = False
-            self.search_verified = True
-            self.url_context_enabled = False
-            self.url_context_verified = True
+            if function_settings:
+                await ensure_functions(self.page, function_settings)
+                self.google_search_enabled = False
+                self.search_verified = True
+                self.url_context_enabled = False
+                self.url_context_verified = True
 
-        # Preserve the requested/current Google Search state.
-        await self.ensure_tools(enable_search=enable_search)
-        if enable_search is True and not (self.google_search_enabled and self.search_verified):
-            yield {"error": "[Error: UNSUPPORTED_GOOGLE_SEARCH - requested search is not available]"}
-            return
+            # Preserve the requested/current Google Search state.
+            await self.ensure_tools(enable_search=enable_search)
+            if enable_search is True and not (self.google_search_enabled and self.search_verified):
+                yield {"error": "[Error: UNSUPPORTED_GOOGLE_SEARCH - requested search is not available]"}
+                return
 
         # Ensure no stray menus or overlays exist
         try:
@@ -536,52 +551,6 @@ class WebHookBrowserManager:
             logger.warning(f"Note inspecting initial turns: {e}")
         logger.info(f"Initial model turns count: {initial_model_count}")
 
-        # 2. Locate the prompt input textarea (No window.scrollTo, no scroll_into_view distortions)
-        prompt_locator = self.page.locator(
-            '.prompt-box-container textarea, textarea[formcontrolname="promptText"], textarea[aria-label*="prompt" i], textarea[placeholder*="prompt" i], textarea[placeholder*="Type" i]'
-        ).last
-
-        try:
-            await prompt_locator.wait_for(state="attached", timeout=8000)
-            await prompt_locator.wait_for(state="visible", timeout=3000)
-        except Exception as e:
-            logger.error(f"Could not locate chat prompt input: {e}")
-            try:
-                await self.page.screenshot(path=f"{RUNTIME_DIR}/debug_missing_input.png")
-            except Exception:
-                pass
-            yield {"error": "[Error: Could not locate chat prompt input in Google AI Studio. Check debug_missing_input.png]"}
-            return
-
-        if images and not await self.attach_files(images):
-            yield {"error": "[Error: Media upload could not establish all ready attachments]"}
-            return
-
-        # 3. Focus, clear, and insert prompt text cleanly via JAVASCRIPT
-        try:
-            logger.info("Injecting prompt via JavaScript and triggering native events...")
-            ta = self.page.locator('textarea[placeholder*="Type something" i], textarea[aria-label*="prompt" i], ms-autosize-textarea textarea, div[contenteditable="true"]').first
-            await ta.wait_for(state="visible", timeout=5000)
-
-            # Use JS to set the value instantly (avoids Playwright's fill() dropping chars on huge text)
-            await ta.evaluate('''(el, text) => {
-                el.value = text;
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-            }''', prompt)
-
-            # Settle delay
-            await asyncio.sleep(0.1)
-
-            # Trigger one native keystroke so Angular/BotGuard registers a trusted event on the non-empty field
-            await ta.focus()
-            await self.page.keyboard.press("Space")
-            await self.page.keyboard.press("Backspace")
-
-            await asyncio.sleep(0.4)
-        except Exception as e:
-            logger.warning(f"Error injecting prompt: {e}")
-
         # Determine case count from batch_size or prompt inspection
         case_count = batch_size if (batch_size is not None and batch_size > 0) else None
         if not case_count:
@@ -590,27 +559,79 @@ class WebHookBrowserManager:
 
         t_cfg = self.get_adaptive_timeouts(case_count)
 
-        # 4. Wait for Run button to become ACTIVE (Tokenization and Image ready)
-        logger.info(f"Waiting for Google AI Studio Run button to become active (tokenizing/ready)...")
-        run_btn = self.page.locator('button.ctrl-enter-submits, button.ctrl-enter, button[mattooltipclass="run-button-tooltip"], button:has-text("Run")').first
-        run_active = False
-        t_wait_start = time.time()
-        run_deadline = time.monotonic() + (t_cfg["initial_start_timeout"] if images else 25)
-        while time.monotonic() < run_deadline:
-            try:
-                aria_dis = await run_btn.get_attribute("aria-disabled")
-                is_dis = await run_btn.is_disabled()
-                if aria_dis != "true" and not is_dis:
-                    run_active = True
-                    logger.info(f"[+] Run button is ACTIVE after {time.time() - t_wait_start:.2f}s! Ready to execute.")
-                    break
-            except Exception:
-                pass
-            await asyncio.sleep(0.5)
+        if continuation is not None:
+            run_btn = await prepare_result(self.page, prompt, continuation)
+            run_active = True
+        else:
+            # 2. Locate the prompt input textarea (No window.scrollTo, no scroll_into_view distortions)
+            prompt_locator = self.page.locator(
+                '.prompt-box-container textarea, textarea[formcontrolname="promptText"], textarea[aria-label*="prompt" i], textarea[placeholder*="prompt" i], textarea[placeholder*="Type" i]'
+            ).last
 
-        if images and not run_active:
-            yield {"error": "[Error: MEDIA_TOKENIZATION_TIMEOUT - media processing did not enable Run]"}
-            return
+            try:
+                await prompt_locator.wait_for(state="attached", timeout=8000)
+                await prompt_locator.wait_for(state="visible", timeout=3000)
+            except Exception as e:
+                logger.error(f"Could not locate chat prompt input: {e}")
+                try:
+                    await self.page.screenshot(path=f"{RUNTIME_DIR}/debug_missing_input.png")
+                except Exception:
+                    pass
+                yield {"error": "[Error: Could not locate chat prompt input in Google AI Studio. Check debug_missing_input.png]"}
+                return
+
+            if images and not await self.attach_files(images):
+                yield {"error": "[Error: Media upload could not establish all ready attachments]"}
+                return
+
+            # 3. Focus, clear, and insert prompt text cleanly via JAVASCRIPT
+            try:
+                logger.info("Injecting prompt via JavaScript and triggering native events...")
+                ta = self.page.locator('textarea[placeholder*="Type something" i], textarea[aria-label*="prompt" i], ms-autosize-textarea textarea, div[contenteditable="true"]').first
+                await ta.wait_for(state="visible", timeout=5000)
+
+                # Use JS to set the value instantly (avoids Playwright's fill() dropping chars on huge text)
+                await ta.evaluate('''(el, text) => {
+                    el.value = text;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }''', prompt)
+
+                # Settle delay
+                await asyncio.sleep(0.1)
+
+                # Trigger one native keystroke so Angular/BotGuard registers a trusted event on the non-empty field
+                await ta.focus()
+                await self.page.keyboard.press("Space")
+                await self.page.keyboard.press("Backspace")
+
+                await asyncio.sleep(0.4)
+            except Exception as e:
+                logger.warning(f"Error injecting prompt: {e}")
+
+            # 4. Wait for Run button to become ACTIVE (Tokenization and Image ready)
+            logger.info(f"Waiting for Google AI Studio Run button to become active (tokenizing/ready)...")
+            run_btn = self.page.locator('button.ctrl-enter-submits, button.ctrl-enter, button[mattooltipclass="run-button-tooltip"], button:has-text("Run")').first
+            run_active = False
+            t_wait_start = time.time()
+            run_deadline = time.monotonic() + (t_cfg["initial_start_timeout"] if images else 25)
+            while time.monotonic() < run_deadline:
+                try:
+                    aria_dis = await run_btn.get_attribute("aria-disabled")
+                    is_dis = await run_btn.is_disabled()
+                    if aria_dis != "true" and not is_dis:
+                        run_active = True
+                        logger.info(f"[+] Run button is ACTIVE after {time.time() - t_wait_start:.2f}s! Ready to execute.")
+                        break
+                except Exception:
+                    pass
+                await asyncio.sleep(0.5)
+
+            if function_settings is not None and not run_active:
+                raise GatewayError(503, "AI Studio native function submission is not ready; nothing was sent.", "browser_not_ready")
+            if images and not run_active:
+                yield {"error": "[Error: MEDIA_TOKENIZATION_TIMEOUT - media processing did not enable Run]"}
+                return
 
         current_state = self.STATE_NO_RESPONSE_STARTED
         t_turn_detected: Optional[float] = None
@@ -632,6 +653,8 @@ class WebHookBrowserManager:
                 await ta.focus()
                 await self.page.keyboard.press("Control+Enter")
         except Exception as e:
+            if function_settings is not None:
+                raise GatewayError(503, "AI Studio native function submission could not be verified; no retry was made.", "upstream_error") from None
             logger.warning(f"Error submitting via Run button: {e}. Falling back to Control+Enter...")
             try:
                 await ta.focus()
@@ -691,6 +714,7 @@ class WebHookBrowserManager:
                     continue
 
             if function_settings is not None:
+                self.last_batch_turn = state.get("model_turn_id", "")
                 function_calls = state.get("function_calls", [])
             current_text = state.get("text", "")
             is_running = state.get("is_running", False)
@@ -901,6 +925,7 @@ class WebHookBrowserManager:
     async def generate_speech(self, text, model, voice, request_id):
         """Caller owns the shared lock; speech has its own observed editor."""
         from .speech import generate_in_speech_page
+        self.tool_run.require_idle()
         self.last_usage = None
         self.last_timings = {}
         self.usage_observer.begin(request_id, text)

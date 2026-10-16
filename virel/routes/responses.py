@@ -37,7 +37,7 @@ async def responses_endpoint(request: Request):
     if not isinstance(body, dict):
         raise GatewayError(400, "Expected a JSON object.", "invalid_request")
     if is_tool_request(body):
-        return await function_response(body, True, sem)
+        return await function_response(body, True, sem, owner=request.headers.get("authorization", ""))
     generation_options = validate_options(body)
     if body.get("prompt"):
         raise GatewayError(400, "Reusable prompt templates are not supported yet.", "unsupported_capability")

@@ -32,7 +32,7 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
 
     body = await request.json()
     if is_tool_request(body):
-        return await function_response(body, False, sem)
+        return await function_response(body, False, sem, owner=request.headers.get("authorization", ""))
     generation_options = validate_options(body)
     require_ready()
     prompt, images = extract_prompt_and_images(chat_request.messages)
