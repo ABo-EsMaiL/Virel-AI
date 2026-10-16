@@ -11,12 +11,12 @@ from typing import AsyncGenerator, List, Optional, Union
 from playwright.async_api import async_playwright, BrowserContext, Page
 
 from .config import (RUNTIME_DIR, CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, ENABLE_SEARCH_GROUNDING, ENABLE_URL_CONTEXT, TARGET_URL, TOOL_RUN_TTL_SECONDS)
-from .dom import FETCH_RESPONSE_STATE
+from .dom import FETCH_RESPONSE_STATE, START_ERROR_WATCH, STOP_ERROR_WATCH
 from .function_ui import disable_functions, ensure_functions
 from .tool_batch import disable_structured, verify_continuation, prepare_result
 from .tool_runs import ToolRun
 from .usage import BrowserUsageObserver
-from .models import MODEL_SELECTOR, MODEL_ROWS, READ_MODEL_ROWS, catalog_from_rows, selected_id, IMAGE_MODEL_ICONS
+from .models import MODEL_SELECTOR, MODEL_ROWS, READ_MODEL_ROWS, catalog_from_rows, selected_id, selected_card_id, IMAGE_MODEL_ICONS
 from .errors import GatewayError
 from .image_output import ensure_image_settings, read_image_output
 
@@ -202,8 +202,10 @@ class WebHookBrowserManager:
             item = self.require_model(target_model, output_kind=output_kind)
             expected = item.get('resolved_id', target_model)
             control = self.page.locator(MODEL_SELECTOR).first
-            current = selected_id(await control.inner_text(), self.model_catalog)
-            if current != expected:
+            label = await control.inner_text()
+            selected = selected_card_id(label, self.model_catalog)
+            current = selected_id(label, self.model_catalog)
+            if selected != target_model:
                 try:
                     await self._open_model_picker()
                     current_catalog = catalog_from_rows(await self.page.evaluate(READ_MODEL_ROWS))
@@ -221,13 +223,15 @@ class WebHookBrowserManager:
                     await self.page.keyboard.press('Escape')
                 deadline = time.monotonic() + 8
                 while time.monotonic() < deadline:
-                    current = selected_id(await control.inner_text(), self.model_catalog)
-                    if current == expected:
+                    label = await control.inner_text()
+                    selected = selected_card_id(label, self.model_catalog)
+                    current = selected_id(label, self.model_catalog)
+                    if selected == target_model and current == expected:
                         break
                     await asyncio.sleep(.2)
             self.active_model = current or ''
-            self.model_verified = current == expected
-            logger.info('Model requested=%s active=%s verified=%s', target_model, self.active_model, self.model_verified)
+            self.model_verified = selected == target_model and current == expected
+            logger.info('Model requested=%s selected=%s active=%s verified=%s', target_model, selected, self.active_model, self.model_verified)
         except GatewayError as error:
             self.model_error = 'MODEL_NOT_FOUND' if error.status_code == 404 else ('UNSUPPORTED_MODEL' if error.status_code == 400 else 'MODEL_UNAVAILABLE')
         except Exception as error:
@@ -437,6 +441,11 @@ class WebHookBrowserManager:
             if output_kind == "text" and not failed and final_text.strip() and self.model_verified:
                 self.generated_models.add(self.active_model)
         finally:
+            try:
+                if self.page and not self.page.is_closed():
+                    await self.page.evaluate(STOP_ERROR_WATCH)
+            except Exception:
+                logger.debug("Generation error watcher cleanup failed.")
             usage = await self.usage_observer.finish(attempt_id)
             self.last_usage = None if self.comparison_skipped else usage
 
@@ -640,6 +649,7 @@ class WebHookBrowserManager:
         prev_text = ""
         consecutive_js_errors = 0
 
+        await self.page.evaluate(START_ERROR_WATCH)
         t_submit = time.time()
         t_pre_exec = t_submit - t_req_start
         t_last_growth = t_submit
@@ -737,7 +747,7 @@ class WebHookBrowserManager:
             # Check for fatal or tool call error in AI Studio
             if has_error and not is_running and elapsed > 0.5:
                 err_text = state.get("error_text") or "Google AI Studio encountered an error ('permission denied' / 'internal error')"
-                logger.error("AI Studio generation ended with an error.")
+                logger.error("AI Studio generation error: %s", err_text[:1200])
                 yield {"error": f"[Error: {err_text}]"}
                 break
 

@@ -1,5 +1,39 @@
 """AI Studio DOM response-state reader executed inside Chromium."""
 
+import json
+
+ERROR_SELECTORS = 'mat-snack-bar-container, .toast, [role="alert"], ms-chat-turn .error-message, ms-chat-turn ms-error-chunk'
+ERROR_PATTERN = r"permission denied|internal error|failed to generate|too_many_tool_calls|too many tool calls|quota exceeded|daily limit of requests|rate limit|model (?:isn.t|is not) available right now|model is currently unavailable|model is overloaded|service unavailable|something went wrong"
+
+START_ERROR_WATCH = r"""() => {
+    window.__virelGenerationErrors?.observer.disconnect();
+    const state = {error: '', observer: null};
+    const selectors = __SELECTORS__;
+    const pattern = new RegExp(__PATTERN__, 'i');
+    const capture = node => {
+        const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+        if (!el) return;
+        const candidates = [el.closest(selectors), ...el.querySelectorAll(selectors)].filter(Boolean);
+        for (const candidate of candidates) {
+            const text = (candidate.innerText || candidate.textContent || '').trim().slice(0, 1200);
+            if (pattern.test(text)) state.error = text;
+        }
+    };
+    state.observer = new MutationObserver(records => {
+        for (const record of records) {
+            if (record.type === 'characterData') capture(record.target);
+            for (const node of record.addedNodes) capture(node);
+        }
+    });
+    state.observer.observe(document.body, {subtree: true, childList: true, characterData: true});
+    window.__virelGenerationErrors = state;
+}""".replace('__SELECTORS__', json.dumps(ERROR_SELECTORS)).replace('__PATTERN__', json.dumps(ERROR_PATTERN))
+
+STOP_ERROR_WATCH = """() => {
+    window.__virelGenerationErrors?.observer.disconnect();
+    delete window.__virelGenerationErrors;
+}"""
+
 FETCH_RESPONSE_STATE = '''(initialCount) => {
             // 1. Locate the Run/Stop action button in Google AI Studio
             const allButtons = Array.from(document.querySelectorAll('button'));
@@ -46,14 +80,11 @@ FETCH_RESPONSE_STATE = '''(initialCount) => {
             // Check for internal errors and tool call errors
             let hasError = false;
             let errorText = "";
-            const alertEl = document.querySelector('mat-snack-bar-container, .toast, [role="alert"]');
-            if (alertEl) {
-                const atxt = (alertEl.innerText || alertEl.textContent || '').toLowerCase();
-                if (atxt.includes('permission denied') || atxt.includes('internal error') || atxt.includes('failed to generate') || atxt.includes('too_many_tool_calls') || atxt.includes('too many tool calls')) {
-                    hasError = true;
-                    errorText = alertEl.innerText || alertEl.textContent || '';
-                }
-            }
+            const watch = window.__virelGenerationErrors;
+            const pattern = new RegExp(__PATTERN__, 'i');
+            errorText = watch ? watch.error : Array.from(document.querySelectorAll(__SELECTORS__))
+                .map(el => (el.innerText || el.textContent || '').trim()).find(text => pattern.test(text)) || '';
+            hasError = Boolean(errorText);
 
             const bodyTxt = (document.body.innerText || '');
             if (bodyTxt.includes('too_many_tool_calls') || bodyTxt.includes('Too many tool calls')) {
@@ -186,4 +217,4 @@ FETCH_RESPONSE_STATE = '''(initialCount) => {
                 new_model_turn_started: newModelTurnStarted,
                 tool_calls: toolCallsCount
             };
-        }'''
+        }'''.replace('__SELECTORS__', json.dumps(ERROR_SELECTORS)).replace('__PATTERN__', json.dumps(ERROR_PATTERN))
