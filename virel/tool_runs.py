@@ -21,6 +21,15 @@ def canonical(history):
     return result
 
 
+def conversation(history):
+    """Keep instruction roles/positions bound while allowing their content to refresh."""
+    return [{"role": turn["role"]} if turn.get("role") in ("system", "developer") else turn for turn in history]
+
+
+def instructions(history):
+    return [turn for turn in history if turn.get("role") in ("system", "developer")]
+
+
 class ToolRun:
     def __init__(self, ttl):
         self.ttl = ttl
@@ -37,16 +46,20 @@ class ToolRun:
         if self.pending:
             raise GatewayError(429, "The browser is waiting for this agent's function result. Finish that loop or wait for its idle timeout.", "tool_run_busy")
 
-    def remember(self, history, calls, config, anchor="", response_text="", text=""):
-        self.pending = {"prefix": digest(canonical(history)), "config": config,
+    def remember(self, history, calls, config, anchor="", response_text="", text="", owner=""):
+        normalized = canonical(history)
+        self.pending = {"prefix": digest(conversation(normalized)), "config": config,
+                        "owner": owner, "instructions": digest(instructions(normalized)),
                         "text": digest(text), "anchor": anchor, "response_hash": digest(response_text),
                         "deadline": time.monotonic() + self.ttl,
                         "calls": [{"id": call["id"], "name": call["function"]["name"],
                                    "arguments_hash": digest(json.loads(call["function"]["arguments"]))} for call in calls]}
 
-    def resolve(self, history, config):
+    def resolve(self, history, config, owner=""):
         self.expire()
         if not history or history[-1].get("role") != "tool":
+            if self.pending and owner == self.pending["owner"]:
+                self.clear()
             self.require_idle()
             return None
         if not self.pending:
@@ -59,13 +72,16 @@ class ToolRun:
         calls = normalized.pop().get("tool_calls", []) if normalized else []
         supplied = [{"id": c["id"], "name": c["name"], "arguments_hash": digest(c["arguments"])} for c in calls]
         expected = [{k: c[k] for k in ("id", "name", "arguments_hash")} for c in self.pending["calls"]]
-        prefix = digest(normalized)
+        prefix = digest(conversation(normalized))
         # Native clients can omit text accompanying a function request.
         if prefix != self.pending["prefix"] and normalized and normalized[-1].get("role") == "assistant" and digest(normalized[-1].get("content", "")) == self.pending["text"]:
-            prefix = digest(normalized[:-1])
-        if config != self.pending["config"] or prefix != self.pending["prefix"] or supplied != expected or set(results) != {c["id"] for c in expected}:
+            prefix = digest(conversation(normalized[:-1]))
+        if owner != self.pending["owner"] or config != self.pending["config"] or prefix != self.pending["prefix"] or supplied != expected or set(results) != {c["id"] for c in expected}:
             raise GatewayError(409, "Function IDs, previous history, caller or settings do not match the pending round.", "tool_continuation_conflict")
         reply = {"results": [{"call_id": c["id"], "name": c["name"], "output": results[c["id"]]} for c in self.pending["calls"]],
                  "anchor": self.pending["anchor"], "response_hash": self.pending["response_hash"]}
+        current_instructions = instructions(normalized)
+        if digest(current_instructions) != self.pending["instructions"]:
+            reply["caller_instructions"] = current_instructions
         self.clear()
         return reply
