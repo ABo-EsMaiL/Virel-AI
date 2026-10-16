@@ -65,18 +65,30 @@ class ToolRun:
         if not self.pending:
             raise GatewayError(409, "This function round is no longer available. Start a new agent execution; results were not replayed.", "tool_continuation_unavailable")
         normalized = canonical(history)
-        results = {}
-        while normalized and normalized[-1].get("role") == "tool":
-            turn = normalized.pop()
-            results[turn["tool_call_id"]] = turn["content"]
-        calls = normalized.pop().get("tool_calls", []) if normalized else []
-        supplied = [{"id": c["id"], "name": c["name"], "arguments_hash": digest(c["arguments"])} for c in calls]
-        expected = [{k: c[k] for k in ("id", "name", "arguments_hash")} for c in self.pending["calls"]]
+        results, supplied = {}, {}
+        expected = {c["id"]: {k: c[k] for k in ("id", "name", "arguments_hash")} for c in self.pending["calls"]}
+        # Clients may interleave each call/result pair rather than replay one assistant batch.
+        while normalized and (len(results) < len(expected) or len(supplied) < len(expected)):
+            turn = normalized[-1]
+            if turn.get("role") == "tool":
+                call_id = turn["tool_call_id"]
+                if call_id not in expected or call_id in results:
+                    break
+                results[call_id] = turn["content"]
+            elif turn.get("tool_calls"):
+                calls = turn["tool_calls"]
+                batch = {c["id"]: {"id": c["id"], "name": c["name"], "arguments_hash": digest(c["arguments"])} for c in calls}
+                if len(batch) != len(calls) or any(call_id not in expected or call_id in supplied for call_id in batch):
+                    break
+                supplied.update(batch)
+            else:
+                break
+            normalized.pop()
         prefix = digest(conversation(normalized))
         # Native clients can omit text accompanying a function request.
         if prefix != self.pending["prefix"] and normalized and normalized[-1].get("role") == "assistant" and digest(normalized[-1].get("content", "")) == self.pending["text"]:
             prefix = digest(conversation(normalized[:-1]))
-        if owner != self.pending["owner"] or config != self.pending["config"] or prefix != self.pending["prefix"] or supplied != expected or set(results) != {c["id"] for c in expected}:
+        if owner != self.pending["owner"] or config != self.pending["config"] or prefix != self.pending["prefix"] or supplied != expected or set(results) != set(expected):
             raise GatewayError(409, "Function IDs, previous history, caller or settings do not match the pending round.", "tool_continuation_conflict")
         reply = {"results": [{"call_id": c["id"], "name": c["name"], "output": results[c["id"]]} for c in self.pending["calls"]],
                  "anchor": self.pending["anchor"], "response_hash": self.pending["response_hash"]}
