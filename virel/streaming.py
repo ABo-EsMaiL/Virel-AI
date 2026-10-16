@@ -109,8 +109,12 @@ def stream_response(source, responses, identifier, now, model, include_usage=Fal
                             yield event("response.content_part.added", item_id=message_id, output_index=0, content_index=0, part=part(""))
                         message_started = True
                         text += delta
-                        for offset in range(0, len(delta), 64):
-                            fragment = delta[offset:offset + 64]
+                        # Bound the typing effect to 60 steps even for very long replies.
+                        step = max(16, (len(delta) + 59) // 60)
+                        for offset in range(0, len(delta), step):
+                            if offset:
+                                await asyncio.sleep(0.025)
+                            fragment = delta[offset:offset + step]
                             if responses:
                                 yield event("response.output_text.delta", item_id=message_id, output_index=0, content_index=0, delta=fragment, logprobs=[])
                             else:
@@ -153,4 +157,4 @@ def stream_response(source, responses, identifier, now, model, include_usage=Fal
             raise
     return StreamingResponse(serialize(), media_type="text/event-stream", headers={
         "Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Request-ID": identifier,
-        "X-Virel-Usage-Delivery": "final_event", "X-Virel-Text-Delivery": "completed_browser_snapshot_chunked", **(headers or {})})
+        "X-Virel-Usage-Delivery": "final_event", "X-Virel-Text-Delivery": "completed_browser_snapshot_paced", **(headers or {})})
