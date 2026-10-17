@@ -19,7 +19,7 @@ from .errors import GatewayError
 MAX_IMAGES = 4
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_IMAGE_PIXELS = 20_000_000
-FORMATS = {'PNG': ('image/png', '.png'), 'JPEG': ('image/jpeg', '.jpg'), 'WEBP': ('image/webp', '.webp')}
+FORMATS = {'PNG': ('image/png', '.png'), 'JPEG': ('image/jpeg', '.jpg'), 'WEBP': ('image/webp', '.webp'), 'BMP': ('image/bmp', '.bmp'), 'GIF': ('image/gif', '.gif')}
 
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):
     def __init__(self, host, address):
@@ -34,7 +34,7 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
             raw.close()
             raise
 
-def _fetch_https(url, *, max_bytes=None, accept="image/png,image/jpeg,image/webp", kind="image"):
+def _fetch_https(url, *, max_bytes=None, accept="image/png,image/jpeg,image/webp,image/bmp,image/gif", kind="image"):
     max_bytes = MAX_IMAGE_BYTES if max_bytes is None else max_bytes
     if not isinstance(url, str) or any(ord(char) < 33 or ord(char) == 127 for char in url):
         raise GatewayError(400, 'Invalid public media URL.', 'invalid_'+kind+'_url')
@@ -112,9 +112,9 @@ def _prepare_one(source, folder, index):
     if not isinstance(source, str) or not source:
         raise GatewayError(400, 'An image URL or data image is required.', 'invalid_image')
     if source.startswith('data:'):
-        match = re.fullmatch(r'data:(image/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)', source)
+        match = re.fullmatch(r'data:(image/(?:png|jpeg|webp|bmp|gif));base64,([A-Za-z0-9+/=]+)', source)
         if not match:
-            raise GatewayError(400, 'Use a valid PNG, JPEG or WebP base64 data image.', 'invalid_image')
+            raise GatewayError(400, 'Use a valid PNG, JPEG, WebP, BMP or static GIF base64 image.', 'invalid_image')
         declared_mime, encoded = match.groups()
         if len(encoded) > 4 * ((MAX_IMAGE_BYTES + 2) // 3):
             raise GatewayError(413, 'Image exceeds the 5 MiB limit.', 'image_too_large')
@@ -126,7 +126,12 @@ def _prepare_one(source, folder, index):
         data = _fetch_https(source)
     fmt, _ = validate_image_bytes(data, declared_mime)
     path = Path(folder) / (str(index) + FORMATS[fmt][1])
-    path.write_bytes(data)
+    if fmt == 'GIF':
+        path = path.with_suffix('.png')
+        with Image.open(io.BytesIO(data)) as picture:
+            picture.convert('RGBA').save(path, format='PNG')
+    else:
+        path.write_bytes(data)
     return str(path)
 
 @asynccontextmanager

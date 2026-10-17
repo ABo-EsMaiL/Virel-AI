@@ -18,6 +18,13 @@ FORMATS = {
     '.ogg': ('ogg', {'audio/ogg', 'application/ogg'}),
     '.flac': ('flac', {'audio/flac', 'audio/x-flac'}),
     '.webm': ('matroska', {'audio/webm', 'video/webm'}),
+    '.weba': ('matroska', {'audio/webm'}),
+    '.oga': ('ogg', {'audio/ogg', 'application/ogg'}),
+    '.opus': ('ogg', {'audio/ogg', 'audio/opus'}),
+    '.aac': ('aac', {'audio/aac', 'audio/x-aac'}),
+    '.aiff': ('aiff', {'audio/aiff', 'audio/x-aiff'}),
+    '.aif': ('aiff', {'audio/aiff', 'audio/x-aiff'}),
+    '.m4b': ('mov', {'audio/mp4', 'audio/x-m4b'}),
 }
 
 
@@ -26,6 +33,7 @@ async def prepared_audio(data, filename, mime):
     safe_filename(filename, FORMATS)
     extension = Path(filename).suffix.lower()
     family, mimes = FORMATS[extension]
+    mime = mime.split(';', 1)[0].strip().lower() if isinstance(mime, str) else mime
     if mime not in mimes | {'application/octet-stream', None}:
         raise GatewayError(400, 'Audio MIME does not match the declared file format.', 'invalid_audio')
     if len(data) > MAX_AUDIO_BYTES:

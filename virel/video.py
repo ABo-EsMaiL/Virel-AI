@@ -12,7 +12,15 @@ from .errors import GatewayError
 from .files import safe_filename
 from .images import _fetch_https
 
-FORMATS = {'.mp4': ('mov', 'video/mp4'), '.webm': ('matroska', 'video/webm')}
+FORMATS = {
+    '.mp4': ('mov', 'video/mp4'), '.webm': ('matroska', 'video/webm'),
+    '.mov': ('mov', 'video/quicktime'), '.m4v': ('mov', 'video/x-m4v'),
+    '.mpeg': ('mpeg', 'video/mpeg'), '.mpg': ('mpeg', 'video/mpeg'),
+    '.avi': ('avi', 'video/x-msvideo'), '.flv': ('flv', 'video/x-flv'),
+    '.wmv': ('asf', 'video/x-ms-wmv'), '.3gp': ('mov', 'video/3gpp'),
+    '.3g2': ('mov', 'video/3gpp2'), '.mkv': ('matroska', 'video/x-matroska'),
+}
+MIME_ALIASES = {'video/avi':'video/x-msvideo', 'video/wmv':'video/x-ms-wmv', 'video/mpg':'video/mpeg', 'video/3gp':'video/3gpp', 'video/m4v':'video/x-m4v'}
 
 
 def _filename(source):
@@ -49,7 +57,9 @@ def _write_source(source, path):
     else:
         if value.startswith('data:'):
             prefix, separator, value = value.partition(',')
-            if not separator or prefix not in ('data:'+FORMATS[extension][1]+';base64', 'data:application/octet-stream;base64'):
+            mime = prefix[5:-7] if prefix.startswith('data:') and prefix.endswith(';base64') else ''
+            mime = MIME_ALIASES.get(mime, mime)
+            if not separator or mime not in (FORMATS[extension][1], 'application/octet-stream'):
                 raise GatewayError(400, 'Video data MIME must match its filename.', 'invalid_video')
         if len(value) > 4*((MAX_VIDEO_BYTES+2)//3):
             raise GatewayError(413, 'Video exceeds the configured byte limit.', 'video_too_large')
