@@ -311,7 +311,8 @@ async def _function_events(plan, options, sem, owner, identifier, now, model, re
                     fail("AI Studio returned no final text or native client-tool calls.", True)
                 if calls:
                     browser_manager.tool_run.remember(plan["history"], calls, identity,
-                        anchor=browser_manager.last_batch_turn, response_text=[{"name": BATCH_NAME, "arguments": native_envelope}], text=text, owner=caller)
+                        anchor=browser_manager.last_batch_turn, response_text=[{"name": BATCH_NAME, "arguments": native_envelope}], text=text, owner=caller,
+                        tool_schemas={name: validator.schema for name, validator in plan["validators"].items()})
             except BaseException:
                 browser_manager.tool_run.clear()
                 raise
