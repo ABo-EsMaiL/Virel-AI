@@ -65,6 +65,41 @@ For Responses, use `use_responses_api=True, store=False, use_previous_response_i
 
 Native text/history, sync/async streams, tool loops, images/PDFs and concurrent client requests passed local tests with `langchain-openai1.7.2`, `langchain-core1.6.12` and `openai3.33.0`. These tests use the real SDK and mocked browser generation; live Google acceptance remains user-owned. Supported gateway features and limits below still apply. See the [official integration documentation](https://docs.langchain.com/oss/python/integrations/chat/openai).
 
+## LangGraph
+
+Install `langgraph==1.2.16` alongside the LangChain versions above. Use the official `StateGraph(MessagesState)` and `ToolNode`; the graph belongs to your application:
+
+```python
+import asyncio
+from langgraph.graph import START, MessagesState, StateGraph
+from langgraph.prebuilt import ToolNode, tools_condition
+from langchain_core.tools import tool
+
+@tool
+def multiply(a: int, b: int) -> int:
+    """Multiply two integers in the client."""
+    return a * b
+
+bound = model.bind_tools([multiply])
+
+async def call_model(state, config):
+    return {"messages": [await bound.ainvoke(state["messages"], config)]}
+
+builder = StateGraph(MessagesState)
+builder.add_node("model", call_model)
+builder.add_node("tools", ToolNode([multiply]))
+builder.add_edge(START, "model")
+builder.add_conditional_edges("model", tools_condition)
+builder.add_edge("tools", "model")
+graph = builder.compile()
+result = asyncio.run(graph.ainvoke({"messages": [("user", "Calculate 6 times 7.")]}))
+print(result["messages"][-1].text)
+```
+
+The `model` is the native `ChatOpenAI` configured above; both Chat Completions and full-history Responses are supported by the same graph. Use `graph.astream(..., stream_mode="messages")` for native message events. Checkpoints, task IDs and tools remain client-owned. A checkpoint cannot revive an expired browser tool lease; retries of external actions require application-level idempotency.
+
+Native graph tool loops, streams, pause/resume, task isolation and cancellation passed offline tests with mocked browser generation. Live LangGraph acceptance remains user-owned. See the [official quickstart](https://docs.langchain.com/oss/python/langgraph/quickstart).
+
 ## Client tools and agents
 
 Chat Completions and Responses accept client-owned `type:function` tools in JSON or SSE mode. Tool histories currently accept text only; file analysis uses a separate ordinary multimodal request before tool rounds. AI Studio receives one real native relay function, `virel_client_tools`, whose array carries original tool names and typed JSON argument objects. Virel validates each against the caller schema and serializes standard client argument strings in `tool_calls` / `function_call` items, preserving quoted HTML and text. Client results return together as one native function response in the same browser chat. `X-Virel-Tool-Transport: native_function_batch` discloses this mapping. Your client executes every tool; Virel never runs them. Structured Outputs is not used for this transport.
