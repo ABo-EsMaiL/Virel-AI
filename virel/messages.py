@@ -45,7 +45,7 @@ def extract_prompt_and_images(messages: List[ChatMessage]) -> Tuple[str, List[An
                     if not isinstance(info, dict):
                         raise GatewayError(400, "A file source is required.", "invalid_file")
                     sources.append(info)
-                    kind = "video" if is_video_source(info) else "PDF"
+                    kind = "video" if is_video_source(info) else "file"
                     text_parts.append(f"[Attached {kind} {len(sources)}]")
                 else:
                     raise GatewayError(400, "Unsupported message content type.", "unsupported_capability")

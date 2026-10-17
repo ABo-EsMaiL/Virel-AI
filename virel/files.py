@@ -1,4 +1,4 @@
-"""Validated PDF sources, private expiring file IDs and request copies."""
+"""Validated original file storage, private IDs, and native PDF preparation."""
 import asyncio
 import base64
 import binascii
@@ -12,7 +12,7 @@ import tempfile
 import threading
 import time
 import uuid
-from .config import API_KEY, BASE_DIR, RUNTIME_DIR, TEMP_UPLOADS_DIR, MAX_PDF_BYTES, MAX_PDF_PAGES, MAX_PDFS
+from .config import API_KEY, BASE_DIR, RUNTIME_DIR, TEMP_UPLOADS_DIR, MAX_PDF_BYTES, MAX_PDF_PAGES, MAX_PDFS, MAX_FILE_BYTES
 from .errors import GatewayError
 from .images import _fetch_https
 
@@ -115,8 +115,8 @@ def read_stored(file_id):
         if not item:
             raise GatewayError(404, 'File not found or expired.', 'file_not_found')
         data = (folder/'data.pdf').read_bytes()
-        if len(data) != item['bytes'] or len(data) > MAX_PDF_BYTES:
-            raise GatewayError(400, 'Stored PDF is invalid.', 'invalid_file')
+        if len(data) != item['bytes'] or len(data) > MAX_FILE_BYTES:
+            raise GatewayError(400, 'Stored file is invalid.', 'invalid_file')
         return item, data
 
 
@@ -130,25 +130,34 @@ def delete_stored(file_id):
         return {'id': item['id'], 'object': 'file', 'deleted': True}
 
 
-async def save_uploaded(data, filename, purpose):
+async def save_uploaded(data, filename, purpose, mime=None):
+    from .file_inputs import SUPPORTED_EXTENSIONS, prepared_file_inputs, mime_for, normalize_mime
     require_file_key()
-    filename = safe_filename(filename)
+    filename = safe_filename(filename, SUPPORTED_EXTENSIONS)
+    mime = normalize_mime(mime or mime_for(filename))
     if purpose not in ('user_data', 'assistants'):
-        raise GatewayError(400, 'PDF uploads accept user_data or assistants purpose.', 'unsupported_capability')
-    if len(data) > MAX_PDF_BYTES:
-        raise GatewayError(413, f'PDF exceeds the {MAX_PDF_BYTES // (1024*1024)} MiB limit.', 'file_too_large')
+        raise GatewayError(400, 'File uploads accept user_data or assistants purpose.', 'unsupported_capability')
+    if len(data) > MAX_FILE_BYTES:
+        raise GatewayError(413, 'File exceeds VIREL_MAX_FILE_MB.', 'file_too_large')
     Path(TEMP_UPLOADS_DIR).mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='request-', dir=TEMP_UPLOADS_DIR) as tmp:
         path = Path(tmp)/'upload.pdf'
         path.write_bytes(data)
-        await validate_pdf(path)
+        if filename.lower().endswith('.pdf'):
+            if mime not in ('application/pdf', 'application/octet-stream'):
+                raise GatewayError(400, 'PDF MIME does not match content.', 'invalid_file')
+            await validate_pdf(path)
+        else:
+            inline = {'filename': filename, 'file_data': 'data:'+mime+';base64,'+base64.b64encode(data).decode()}
+            async with prepared_file_inputs([inline]):
+                pass
         with _store_lock:
             current = list_stored()
             if len(current) >= MAX_STORED_FILES or sum(item['bytes'] for item in current) + len(data) > MAX_STORED_BYTES:
                 raise GatewayError(413, 'Uploaded file storage quota exceeded. Delete old files.', 'file_storage_limit')
             now = int(time.time())
             item = {'id': 'file-'+uuid.uuid4().hex, 'object': 'file', 'bytes': len(data), 'created_at': now,
-                'filename': filename, 'purpose': purpose, 'expires_at': now+FILE_TTL}
+                'filename': filename, 'purpose': purpose, 'expires_at': now+FILE_TTL, 'mime_type': mime}
             root = Path(FILES_DIR)
             root.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory(prefix='upload-', dir=root) as staging:

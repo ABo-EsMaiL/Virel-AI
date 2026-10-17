@@ -47,7 +47,7 @@ Native n8n OpenAI Chat 1.8 and Responses 2.3 text passed in raw and simplified m
 
 ## Client tools and agents
 
-Chat Completions and Responses accept client-owned `type:function` tools in JSON or SSE mode. AI Studio receives one real native relay function, `virel_client_tools`, whose array carries original tool names and typed JSON argument objects. Virel validates each against the caller schema and serializes standard client argument strings in `tool_calls` / `function_call` items, preserving quoted HTML and text. Client results return together as one native function response in the same browser chat. `X-Virel-Tool-Transport: native_function_batch` discloses this mapping. Your client executes every tool; Virel never runs them. Structured Outputs is not used for this transport.
+Chat Completions and Responses accept client-owned `type:function` tools in JSON or SSE mode. Tool histories currently accept text only; file analysis uses a separate ordinary multimodal request before tool rounds. AI Studio receives one real native relay function, `virel_client_tools`, whose array carries original tool names and typed JSON argument objects. Virel validates each against the caller schema and serializes standard client argument strings in `tool_calls` / `function_call` items, preserving quoted HTML and text. Client results return together as one native function response in the same browser chat. `X-Virel-Tool-Transport: native_function_batch` discloses this mapping. Your client executes every tool; Virel never runs them. Structured Outputs is not used for this transport.
 
 Native n8n AI Agent + OpenAI Chat Model + Calculator passed with streaming disabled; the repaired SSE path requires separate user acceptance. Send complete history and original call IDs with each result. Batched assistant calls and interleaved assistant-call/tool-result pairs are both accepted; results are correlated by ID and returned to the browser in the original request order. The first request starts a fresh browser chat; matching results are added together to that same chat without replaying history or tool definitions. Further tool rounds stay there until the final answer. The next execution starts fresh. A fresh tool request using the same gateway credential supersedes that credential's older waiting round; late results from the older round are rejected without replaying tools. This does not cancel actions already running in your client. No extra client node, header or n8n patch is needed. Streamed tool arguments are published once only after the whole native batch passes validation (`X-Virel-Tool-Arguments: validated_complete`); final text uses rapid bounded display pacing after the browser finishes rendering; native tool arguments remain complete, validated and unpaced. Disconnects abort the current browser page before releasing it. Stream failures have no success trailer; missing usage stays null.
 
@@ -66,7 +66,7 @@ Chat user messages accept text and image parts together:
 ]}]}
 ```
 
-Omit the text part for a default image description. Responses uses `input_image` with a string `image_url`. Both accept PNG/JPEG/WebP base64 data URIs or public HTTPS URLs. Limits: 4 still images, 5 MiB and 20 million pixels each; 128 MiB request body by default. Local paths, redirects, private destinations, image file IDs and non-default detail are rejected. Request upload files are removed afterward.
+Omit the text part for a default image description. Responses uses `input_image` with a string `image_url`. Both accept PNG/JPEG/WebP/BMP/static-GIF base64 data URIs or public HTTPS URLs. Limits: 4 still images, 5 MiB and 20 million pixels each; 128 MiB request body by default. Static GIF is converted to PNG for browser input. Local paths, redirects, private destinations, input_image.file_id and non-default detail are rejected; use generic input_file for uploaded image IDs. Request upload files are removed afterward.
 
 Native n8n **Message a Model 2.3** passed with binary and URL images. Add text and image entries in the same node to send one request. It requires text, so use a neutral description for a picture without a custom question. **Analyze Image** remains unsupported because its automatic output-token limit is not controlled by the browser adapter. Optional UI response comparisons are skipped without voting; ambiguous usage remains null.
 
@@ -97,9 +97,19 @@ The installed n8n OpenAI2.3 Edit serializer does not send its visible Output For
 
 Quality tiers, pixel masks, guaranteed transparency, input fidelity, hosted output URLs, batches and arbitrary resized dimensions remain unavailable. They return field-specific errors with supported alternatives; quality is not silently mapped to resolution or thinking. AI Studio can refuse requests (recitation/safety), and available image models can lack Search/URL tools. Quota/rate-limit UI failures return429 with `upstream_rate_limit`; no automatic retries or stale/input image fallback.
 
-## PDF input
+## File inputs
 
-Native n8n **Message a Model 2.3** accepts PDF file entries alongside a text question: use Binary File, public HTTPS URL, or File ID from the official **Upload a File** node. Scanned and ordinary PDFs are submitted as original documents through the same browser upload/readiness checks.
+Native n8n **Message a Model 2.3** accepts file entries alongside a text question: use Binary File, public HTTPS URL, or File ID from the official **Upload a File** node. Scanned and ordinary PDFs are submitted as original documents through the same browser upload/readiness checks.
+
+| Input | Processing |
+|---|---|
+| PDF | Original visual document, including scans |
+| TXT, Markdown, code, CSV/TSV, JSON, XML, HTML | Bounded Unicode text |
+| DOCX/DOCM, PPTX/PPTM, ODT/ODP, RTF | Server-side text extraction |
+| XLS/XLSX/XLSM/XLSB/ODS | Sheet names, cell addresses and cached values |
+| Images, audio, video | Existing validated browser media path |
+
+Office extraction excludes embedded images/layout and never runs macros, formulas or links. Legacy binary DOC/PPT, encrypted documents, executables and arbitrary archives are unsupported; use modern Office formats or PDF. Native browser acceptance of new types remains user-owned.
 
 Responses file parts use one source:
 
@@ -110,7 +120,7 @@ Responses file parts use one source:
 ]}]}
 ```
 
-Alternatively use file_url, or filename plus file_data containing strict base64/data:application/pdf;base64,... . Default gateway limits:10 PDFs per request,50 MiB and 1000 pages each;128 MiB request body. Configure VIREL_MAX_PDF_MB, VIREL_MAX_PDF_PAGES, VIREL_MAX_PDFS and VIREL_MAX_REQUEST_MB in .env. Encrypted or corrupt PDFs and unsafe URLs are rejected. These are gateway limits, not a guarantee of every model's support.
+Alternatively use file_url, or filename plus file_data containing strict base64 or a matching data:<mime>;base64,... URI . Default gateway limits:10 PDFs per request,50 MiB and 1000 pages each;128 MiB request body. Configure VIREL_MAX_PDF_MB, VIREL_MAX_PDF_PAGES, VIREL_MAX_PDFS and VIREL_MAX_REQUEST_MB in .env. Encrypted or corrupt PDFs and unsafe URLs are rejected. These are gateway limits, not a guarantee of every model's support.
 
 POST /v1/files accepts multipart file and purpose=user_data or assistants. Authenticated list/retrieve/content/delete endpoints are available. Files remain private to this gateway, expire after one hour and are cleaned every 60 seconds/startup; expired IDs fail immediately. Storage is bounded at 20 files/100 MiB. Configure VIREL_API_KEY to enable stored IDs; request copies are deleted afterward. PDF input does not implement File Search or vector stores.
 
@@ -124,9 +134,9 @@ ENABLE_URL_CONTEXT=true enables the current model's URL Context tool for links i
 
 ## Video input
 
-MP4 and WebM video questions work through the native n8n Responses File Data field: connect the binary file directly, set its filename and add your text question. Virel passes the original video into AI Studio after validation and waits for upload/tokenization readiness. No conversion node or local video model is used.
+The validator accepts MP4/WebM, MOV/M4V, MPEG/MPG, AVI, FLV, WMV, 3GP/3G2 and MKV containers. MP4 and WebM video questions work through the native n8n Responses File Data field: connect the binary file directly, set its filename and add your text question. Virel passes the original video into AI Studio after validation and waits for upload/tokenization readiness. No conversion node or local video model is used.
 
-This is a Virel extension to input_file, not official OpenAI video compatibility. Chat file parts accept the same filename/file_data fields; identifiable direct public HTTPS file_url sources are also supported. Media-only HTTP requests get a description prompt; the native n8n node requires text. Stored video IDs, playlists, clipping and video generation are not implemented.
+This is a Virel extension to input_file, not official OpenAI video compatibility. Chat file parts accept the same filename/file_data fields; identifiable direct public HTTPS file_url sources are also supported. Media-only HTTP requests get a description prompt; the native n8n node requires text. Generic file IDs now also support video. Playlists, clipping and video generation are not implemented.
 
 Defaults:50 MiB/video,2 videos/request,20 million pixels/frame; configure VIREL_MAX_VIDEO_MB, VIREL_MAX_VIDEOS and VIREL_MAX_VIDEO_PIXELS. There is no separate duration cap. The HTTP body cap includes base64 overhead; website/model limits still apply. Validation samples a real frame in a bounded child process; request files are removed on completion/error/cancellation. Native MP4/H.264 and WebM/VP9 passed; other encodings and live URL transport need separate acceptance.
 
@@ -136,9 +146,9 @@ Native n8n **Transcribe Audio** and **Translate Audio** operations work with ord
 
 POST /v1/audio/transcriptions or /v1/audio/translations with multipart file and model. Native n8n hardcodes whisper-1: Virel accepts it as a compatibility alias for DEFAULT_MODEL. Responses expose actual model and requested_model; Virel does not run Whisper. JSON returns text and observed usage; response_format=text returns plain text. Language hints are prompt guidance. Explicit temperature, timestamps, streaming and subtitle formats are unsupported.
 
-The validator accepts WAV, MP3/MPEG, M4A/audio-only MP4, OGG, FLAC and audio-only WebM containers, checks MIME/container consistency and decodes a sample before upload. WAV and MP3 passed through native n8n; other listed containers passed isolated decoder checks and still need browser acceptance for each encoding. Audio defaults to 25 MiB per file, configurable with VIREL_MAX_AUDIO_MB. There is no additional duration cap; website/model/context and processing deadlines still apply. Request files are removed on completion/error/cancellation. No stored-audio IDs are implemented.
+The validator accepts WAV, MP3/MPEG, M4A/M4B/audio-only MP4, OGG/OGA/Opus, FLAC, AAC, AIFF/AIF and audio-only WebM/WEBA containers, checks MIME/container consistency and decodes a sample before upload. WAV and MP3 passed through native n8n; other listed containers passed isolated decoder checks and still need browser acceptance for each encoding. Audio defaults to 25 MiB per file, configurable with VIREL_MAX_AUDIO_MB. There is no additional duration cap; website/model/context and processing deadlines still apply. Request files are removed on completion/error/cancellation. Generic file inputs accept stored audio IDs; dedicated transcription/translation operations still take multipart audio.
 
-Limits are positive gateway settings, not unlimited provider capacity. Raising them cannot override website/account/model limits; base64 also increases the request body size. PDF storage remains 20 files/100 MiB with one-hour expiry.
+Limits are positive gateway settings, not unlimited provider capacity. Raising them cannot override website/account/model limits; base64 also increases the request body size. Original file storage remains 20 files/100 MiB with one-hour expiry. General file inputs default to50MiB/file and20files/request; extraction defaults to2million characters,64MiB expanded archives,200000 spreadsheet cells and512MiB parser memory. VIREL_MAX_FILE_* and VIREL_MAX_DOCUMENT_* configure these guards; limits fail explicitly without truncation.
 
 ## Speech output
 

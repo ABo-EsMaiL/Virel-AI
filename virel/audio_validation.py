@@ -10,7 +10,7 @@ def deny_external(url, flags, options):
 def main(path, expected):
     try:
         with open(path, 'rb') as source, av.open(source, mode='r', options={
-                'format_whitelist': 'wav,mp3,mov,ogg,flac,matroska,webm',
+                'format_whitelist': 'wav,mp3,mov,ogg,flac,matroska,webm,aac,aiff',
                 'protocol_whitelist': 'file', 'max_streams': '2'}, io_open=deny_external) as media:
             if expected not in media.format.name.split(',') or len(media.streams.audio) != 1:
                 return 1
