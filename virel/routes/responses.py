@@ -5,7 +5,7 @@ import time
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-from ..tools import is_tool_request, function_response
+from ..tools import is_tool_request, function_response, bounded
 from ..streaming import stream_response, text_events, validate_stream
 from ..auth import verify_api_key
 from ..errors import GatewayError
@@ -16,6 +16,25 @@ from ..messages import extract_prompt_and_images, responses_messages
 
 logger = logging.getLogger("virel.webhook")
 router = APIRouter()
+
+
+def response_metadata(body):
+    """Validate optional routing hints; they never authorize, cache or store a conversation."""
+    body = dict(body)
+    key = body.pop("prompt_cache_key", None)
+    if key is not None and (not isinstance(key, str) or not 1 <= len(key) <= 512):
+        raise GatewayError(400, "prompt_cache_key must be a bounded string.", "invalid_request")
+    metadata = body.pop("client_metadata", None)
+    if metadata is not None:
+        if not isinstance(metadata, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in metadata.items()):
+            raise GatewayError(400, "client_metadata must be a string map.", "invalid_request")
+        bounded(metadata, 16384, "Client metadata")
+    include = body.get("include")
+    if include is not None:
+        if not isinstance(include, list) or any(item != "reasoning.encrypted_content" for item in include):
+            raise GatewayError(400, "Only optional reasoning content projection is recognized; no encrypted reasoning is generated.", "unsupported_capability")
+        body.pop("include")
+    return body
 
 
 @router.post("/v1/responses", dependencies=[Depends(verify_api_key)])
@@ -36,6 +55,7 @@ async def responses_endpoint(request: Request):
     body = await request.json()
     if not isinstance(body, dict):
         raise GatewayError(400, "Expected a JSON object.", "invalid_request")
+    body = response_metadata(body)
     validate_stream(body, responses=True)
     if is_tool_request(body):
         return await function_response(body, True, sem, owner=request.headers.get("authorization", ""))
@@ -82,6 +102,7 @@ async def responses_endpoint(request: Request):
                             "type": "message",
                             "id": f"msg_{uuid.uuid4().hex[:16]}",
                             "role": "assistant",
+                            "phase": "final_answer",
                             "status": "completed",
                             "content": [
                                 {

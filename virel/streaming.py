@@ -44,7 +44,7 @@ def text_payload(responses, identifier, now, model, text):
                 "usage": usage.chat() if usage else None}
     return {**common, "object": "response", "created_at": now, "status": "completed", "store": False,
             "error": None, "incomplete_details": None,
-            "output": [{"type": "message", "id": "msg_" + uuid.uuid4().hex[:16], "role": "assistant", "status": "completed",
+            "output": [{"type": "message", "id": "msg_" + uuid.uuid4().hex[:16], "role": "assistant", "status": "completed", "phase": "final_answer",
                         "content": [{"type": "output_text", "text": text, "annotations": []}]}],
             "output_text": text, "usage": usage.responses() if usage else None}
 
