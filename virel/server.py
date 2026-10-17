@@ -4,6 +4,7 @@ import asyncio
 import logging
 from contextlib import suppress
 from .files import prune_files, expiry_loop
+from .browser_pool import BrowserRequestMiddleware
 from json import JSONDecodeError
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -72,12 +73,16 @@ async def lifespan(app: FastAPI):
     await asyncio.to_thread(prune_files)
     await browser_manager.start()
     cleanup = asyncio.create_task(expiry_loop())
+    pool_cleanup = asyncio.create_task(browser_manager.maintenance())
     try:
         yield
     finally:
         cleanup.cancel()
+        pool_cleanup.cancel()
         with suppress(asyncio.CancelledError):
             await cleanup
+        with suppress(asyncio.CancelledError):
+            await pool_cleanup
         await browser_manager.stop()
     logger.info("Virel AI Gateway stopped.")
 
@@ -104,6 +109,7 @@ app.add_middleware(
 )
 
 app.add_middleware(RequestSizeLimit)
+app.add_middleware(BrowserRequestMiddleware, pool=browser_manager)
 
 for route_module in (chat, responses, completions, system, files, audio, image_generation):
     app.include_router(route_module.router)

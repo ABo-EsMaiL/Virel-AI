@@ -35,7 +35,7 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
     if is_tool_request(body):
         return await function_response(body, False, sem, owner=request.headers.get("authorization", ""))
     generation_options = validate_options(body)
-    require_ready()
+    await require_ready()
     prompt, images = extract_prompt_and_images(chat_request.messages)
     if not prompt.strip() and not images:
         raise GatewayError(400, "A nonempty text prompt is required.", "empty_prompt")

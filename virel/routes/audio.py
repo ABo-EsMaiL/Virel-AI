@@ -18,7 +18,7 @@ async def audio_response(request, translate):
     sem = _get_semaphore()
     if sem.locked():
         raise GatewayError(429, 'Browser is processing another request.', 'concurrency_limit')
-    require_ready()
+    await require_ready()
     async with request.form(max_files=1, max_fields=8) as form:
         allowed = {'file', 'model', 'response_format', 'temperature'} | (set() if translate else {'language'})
         if any(key not in allowed or len(form.getlist(key)) != 1 for key in form):
@@ -81,7 +81,7 @@ async def speech(request: Request):
     sem = _get_semaphore()
     if sem.locked():
         raise GatewayError(429, 'Browser is processing another request.', 'concurrency_limit')
-    require_ready()
+    await require_ready()
     if browser_manager.model_catalog_observed:
         browser_manager.require_model(options['model'], output_kind='speech')
     request_id = 'speech_'+uuid.uuid4().hex[:16]

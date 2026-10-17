@@ -13,7 +13,8 @@ from .runtime import browser_manager
 logger = logging.getLogger("virel.webhook")
 
 
-def require_ready():
+async def require_ready():
+    await browser_manager.recover_browser()
     if not browser_manager.is_ready:
         raise GatewayError(503, "AI Studio is not ready. Check the browser login and prompt UI.", "browser_not_ready")
 
@@ -82,7 +83,7 @@ def _browser_error(text):
 
 
 async def checked_stream(prompt, request_id, **options):
-    require_ready()
+    await require_ready()
     if browser_manager.model_catalog_observed:
         browser_manager.require_model(options.get("model_name") or DEFAULT_MODEL, output_kind=options.get("output_kind", "text"))
     browser_manager.last_usage = None

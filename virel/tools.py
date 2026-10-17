@@ -88,8 +88,10 @@ def schema_parts(schema):
             native["items"] = convert(node["items"])
         elif kind == "array":
             fail("Array schemas require a typed items schema.")
-        if "additionalProperties" in node and not isinstance(node["additionalProperties"], bool):
-            fail("Only boolean additionalProperties is supported.", unsupported=True)
+        # MCP converters can represent unrestricted properties as {} instead of true.
+        additional = node.get("additionalProperties", True)
+        if not isinstance(additional, bool) and additional != {}:
+            fail("Only boolean or empty-schema additionalProperties is supported.", unsupported=True)
         return native
     native = convert(schema)
     dialect = schema.get("$schema", "https://json-schema.org/draft/2020-12/schema")
@@ -250,9 +252,11 @@ async def function_response(body, responses, sem, owner=""):
     if ordinary.get("text") == {}: ordinary.pop("text")
     options = validate_options(ordinary)
     if body.get("prompt"): fail("Reusable prompt templates are unavailable.", unsupported=True)
-    require_ready()
+    await require_ready()
     identifier = ("resp_" if responses else "chatcmpl-") + uuid.uuid4().hex[:16]
     now, model = int(time.time()), body.get("model", DEFAULT_MODEL)
+    from .runtime import browser_manager
+    browser_manager.prepare(plan["history"], bool(plan["declarations"]))
     events = _function_events(plan, options, sem, owner, identifier, now, model, responses, body.get("stream", False))
     if body.get("stream", False):
         return stream_response(events, responses, identifier, now, model, validate_stream(body, responses),
@@ -307,7 +311,8 @@ async def _function_events(plan, options, sem, owner, identifier, now, model, re
                     fail("AI Studio returned no final text or native client-tool calls.", True)
                 if calls:
                     browser_manager.tool_run.remember(plan["history"], calls, identity,
-                        anchor=browser_manager.last_batch_turn, response_text=[{"name": BATCH_NAME, "arguments": native_envelope}], text=text, owner=caller)
+                        anchor=browser_manager.last_batch_turn, response_text=[{"name": BATCH_NAME, "arguments": native_envelope}], text=text, owner=caller,
+                        tool_schemas={name: validator.schema for name, validator in plan["validators"].items()})
             except BaseException:
                 browser_manager.tool_run.clear()
                 raise

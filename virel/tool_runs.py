@@ -9,11 +9,19 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def canonical(history):
+def canonical_arguments(name, value, routing_tools):
+    args = json.loads(value)
+    # n8n toolkit histories add their own tool name as routing metadata.
+    if name in routing_tools and args.get("tool") == name:
+        args.pop("tool")
+    return args
+
+
+def canonical(history, routing_tools=()):
     result = []
     for turn in history:
         if turn.get("tool_calls"):
-            calls = [{"id": c["id"], "name": c["name"], "arguments": json.loads(c["arguments"])} for c in turn["tool_calls"]]
+            calls = [{"id": c["id"], "name": c["name"], "arguments": canonical_arguments(c["name"], c["arguments"], routing_tools)} for c in turn["tool_calls"]]
             if result and result[-1].get("tool_calls"):
                 result[-1]["tool_calls"].extend(calls)
             else: result.append({"role": "assistant", "tool_calls": calls})
@@ -46,14 +54,16 @@ class ToolRun:
         if self.pending:
             raise GatewayError(429, "The browser is waiting for this agent's function result. Finish that loop or wait for its idle timeout.", "tool_run_busy")
 
-    def remember(self, history, calls, config, anchor="", response_text="", text="", owner=""):
-        normalized = canonical(history)
+    def remember(self, history, calls, config, anchor="", response_text="", text="", owner="", tool_schemas=None):
+        routing_tools = tuple(name for name, schema in (tool_schemas or {}).items()
+                              if "tool" not in schema.get("properties", {}))
+        normalized = canonical(history, routing_tools)
         self.pending = {"prefix": digest(conversation(normalized)), "config": config,
-                        "owner": owner, "instructions": digest(instructions(normalized)),
+                        "owner": owner, "routing_tools": routing_tools, "instructions": digest(instructions(normalized)),
                         "text": digest(text), "anchor": anchor, "response_hash": digest(response_text),
                         "deadline": time.monotonic() + self.ttl,
                         "calls": [{"id": call["id"], "name": call["function"]["name"],
-                                   "arguments_hash": digest(json.loads(call["function"]["arguments"]))} for call in calls]}
+                                   "arguments_hash": digest(canonical_arguments(call["function"]["name"], call["function"]["arguments"], routing_tools))} for call in calls]}
 
     def resolve(self, history, config, owner=""):
         self.expire()
@@ -64,7 +74,7 @@ class ToolRun:
             return None
         if not self.pending:
             raise GatewayError(409, "This function round is no longer available. Start a new agent execution; results were not replayed.", "tool_continuation_unavailable")
-        normalized = canonical(history)
+        normalized = canonical(history, self.pending.get("routing_tools", ()))
         results, supplied = {}, {}
         expected = {c["id"]: {k: c[k] for k in ("id", "name", "arguments_hash")} for c in self.pending["calls"]}
         # Clients may interleave each call/result pair rather than replay one assistant batch.

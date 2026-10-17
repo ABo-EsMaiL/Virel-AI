@@ -20,7 +20,7 @@ THINKING_MODE = os.getenv("THINKING_MODE", "high").strip().lower()
 ENABLE_SEARCH_GROUNDING = os.getenv("ENABLE_SEARCH_GROUNDING", "false").lower() in ("true", "1", "yes")
 ENABLE_URL_CONTEXT = os.getenv("ENABLE_URL_CONTEXT", "true").lower() in ("true", "1", "yes")
 RATE_LIMIT = os.getenv("VIREL_RATE_LIMIT", "30/minute").strip()
-MAX_CONCURRENT = int(os.getenv("VIREL_MAX_CONCURRENT", "1"))
+
 PORT = int(os.getenv("PORT", "8001"))
 TARGET_URL = "https://aistudio.google.com/prompts/new_chat"
 
@@ -60,3 +60,11 @@ MAX_DOCUMENT_TEXT_CHARS = positive_setting('VIREL_MAX_DOCUMENT_TEXT_CHARS', 2000
 MAX_DOCUMENT_UNPACKED_BYTES = positive_setting('VIREL_MAX_DOCUMENT_UNPACKED_MB', 64) * 1024 * 1024
 MAX_DOCUMENT_CELLS = positive_setting('VIREL_MAX_DOCUMENT_CELLS', 200000)
 MAX_DOCUMENT_MEMORY_BYTES = positive_setting('VIREL_MAX_DOCUMENT_MEMORY_MB', 512) * 1024 * 1024
+
+
+MAX_CONCURRENT = positive_setting("VIREL_MAX_CONCURRENT", 20)
+MAX_QUEUE = positive_setting("VIREL_MAX_QUEUE", 100)
+QUEUE_TIMEOUT_SECONDS = positive_setting("VIREL_QUEUE_TIMEOUT_SECONDS", 120)
+MEMORY_RESERVE_MB = positive_setting("VIREL_MEMORY_RESERVE_MB", 1024)
+TAB_MEMORY_MB = positive_setting("VIREL_TAB_MEMORY_MB", 512)
+MAX_WAITING_TABS = positive_setting("VIREL_MAX_WAITING_TABS", 20)

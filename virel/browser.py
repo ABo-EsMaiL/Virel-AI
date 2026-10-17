@@ -24,8 +24,9 @@ logger = logging.getLogger("virel.webhook")
 
 
 
-class WebHookBrowserManager:
+class BrowserPage:
     def __init__(self):
+        self.request_id = "control"
         self.playwright = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
@@ -51,33 +52,12 @@ class WebHookBrowserManager:
         self.tool_run = ToolRun(TOOL_RUN_TTL_SECONDS)
         self.last_batch_turn = ""
         self.last_usage = None
+        self.last_timings = {}
         self.comparison_skipped = False
         self.usage_observer = BrowserUsageObserver()
 
-    async def start(self):
-        logger.info(f"Launching persistent Chromium context from: {CHROME_PROFILE_DIR} (headless={HEADLESS}, start-maximized)")
-        self.playwright = await async_playwright().start()
 
-        args = [
-            "--disable-blink-features=AutomationControlled",
-            "--start-maximized"
-        ]
-
-        try:
-            self.context = await self.playwright.chromium.launch_persistent_context(
-                user_data_dir=CHROME_PROFILE_DIR,
-                headless=HEADLESS,
-                no_viewport=True,
-                args=args,
-                ignore_default_args=["--enable-automation"]
-            )
-        except Exception as e:
-            logger.error(f"Failed to launch browser: {e}")
-            logger.error(f"Please ensure no other Chromium process is using {CHROME_PROFILE_DIR}.")
-            raise e
-
-        self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
-
+    def attach_page_listeners(self):
         # Attach network response listener to capture any Google backend errors
         async def handle_response(response):
             try:
@@ -95,49 +75,6 @@ class WebHookBrowserManager:
         self.page.on("response", handle_response)
         self.page.on("pageerror", lambda err: logger.warning(f"[Browser Page Error]: {err}"))
 
-        logger.info(f"Navigating to {TARGET_URL} to ensure clean environment...")
-        try:
-            await self.page.goto(TARGET_URL, timeout=60000, wait_until="domcontentloaded")
-            await asyncio.sleep(2)
-        except Exception as e:
-            logger.warning(f"Initial page navigation warning: {e}. Page will be ready on demand.")
-
-        # Check if user needs to log in
-        if "accounts.google.com" in self.page.url or "welcome" in self.page.url:
-            logger.warning("=" * 65)
-            logger.warning("[ACTION REQUIRED] Google AI Studio requires Google Account login!")
-            logger.warning("Please sign into your Google account in the Chromium window.")
-            logger.warning("Waiting for login completion...")
-            logger.warning("=" * 65)
-
-            # Wait up to 3 minutes for user to sign in
-            start_wait = time.time()
-            while time.time() - start_wait < 180:
-                if self.page.is_closed() or self.is_shutting_down:
-                    break
-                ta = self.page.locator('.prompt-box-container textarea, textarea[formcontrolname="promptText"], textarea[aria-label*="prompt" i], textarea[placeholder*="Type" i]').first
-                if await ta.count() > 0 and await ta.is_visible():
-                    logger.info("Login confirmed! Prompt textarea detected.")
-                    break
-                await asyncio.sleep(2)
-
-        prompt_ui = self.page.locator('textarea[aria-label*="prompt" i], textarea[placeholder*="Type" i], textarea[formcontrolname="promptText"]').first
-        try:
-            await prompt_ui.wait_for(state="visible", timeout=8000)
-            self.is_ready = True
-        except Exception:
-            self.is_ready = False
-            logger.warning("AI Studio prompt UI unavailable; authenticated requests will return 503.")
-            return
-        logger.info("Google AI Studio web page ready!")
-
-        await self.ensure_model(DEFAULT_MODEL)
-        await self.ensure_thinking_mode()
-        await disable_functions(self.page)
-        await disable_structured(self.page)
-        await self.ensure_tools(ENABLE_SEARCH_GROUNDING)
-        await self.ensure_url_context()
-        self.is_ready = self.model_catalog_observed
 
     async def _open_model_picker(self):
         await self.page.locator(MODEL_SELECTOR).first.click()
@@ -375,22 +312,6 @@ class WebHookBrowserManager:
             self.is_ready = False
             logger.warning("Cancelled generation could not release its page; browser marked unavailable.")
 
-    async def stop(self):
-        self.tool_run.clear()
-        logger.info("Closing browser context...")
-        self.is_shutting_down = True
-        self.is_ready = False
-        try:
-            if self.context:
-                await self.context.close()
-        except Exception:
-            pass
-        try:
-            if self.playwright:
-                await self.playwright.stop()
-        except Exception:
-            pass
-        logger.info("Browser stopped.")
 
     async def reset_chat_if_needed(self, model_name: Optional[str] = None, output_kind="text") -> bool:
         """Never replay caller history into a retained browser conversation."""
@@ -604,10 +525,10 @@ class WebHookBrowserManager:
             except Exception as e:
                 logger.error(f"Could not locate chat prompt input: {e}")
                 try:
-                    await self.page.screenshot(path=f"{RUNTIME_DIR}/debug_missing_input.png")
+                    await self.page.screenshot(path=f"{RUNTIME_DIR}/debug_missing_input_{self.request_id}.png")
                 except Exception:
                     pass
-                yield {"error": "[Error: Could not locate chat prompt input in Google AI Studio. Check debug_missing_input.png]"}
+                yield {"error": "[Error: Could not locate chat prompt input in Google AI Studio.]"}
                 return
 
             if images and not await self.attach_files(images):
@@ -966,3 +887,107 @@ class WebHookBrowserManager:
             self.last_usage = await self.usage_observer.finish(request_id)
             logger.info('Speech request %s model=%s usage=%s', request_id, self.active_model,
                 self.last_usage.responses() if self.last_usage else 'unavailable')
+
+
+class WebHookBrowserManager(BrowserPage):
+    """Sole persistent Chromium/profile lifecycle owner; request pages never launch it."""
+    def __init__(self):
+        super().__init__()
+        self.context_closed = False
+
+    def _on_context_closed(self, context):
+        if context is self.context:
+            self.context_closed = True
+            self.is_ready = False
+
+    async def start(self):
+        self.is_shutting_down = False
+        self.is_ready = False
+        logger.info(f"Launching persistent Chromium context from: {CHROME_PROFILE_DIR} (headless={HEADLESS}, start-maximized)")
+        self.playwright = await async_playwright().start()
+
+        args = [
+            "--disable-blink-features=AutomationControlled",
+            "--start-maximized"
+        ]
+
+        try:
+            self.context = await self.playwright.chromium.launch_persistent_context(
+                user_data_dir=CHROME_PROFILE_DIR,
+                headless=HEADLESS,
+                no_viewport=True,
+                args=args,
+                ignore_default_args=["--enable-automation"]
+            )
+        except Exception as e:
+            logger.error(f"Failed to launch browser: {e}")
+            logger.error(f"Please ensure no other Chromium process is using {CHROME_PROFILE_DIR}.")
+            raise e
+
+        self.context_closed = False
+        self.context.on("close", self._on_context_closed)
+        self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
+
+        self.attach_page_listeners()
+
+        logger.info(f"Navigating to {TARGET_URL} to ensure clean environment...")
+        try:
+            await self.page.goto(TARGET_URL, timeout=60000, wait_until="domcontentloaded")
+            await asyncio.sleep(2)
+        except Exception as e:
+            logger.warning(f"Initial page navigation warning: {e}. Page will be ready on demand.")
+
+        # Check if user needs to log in
+        if "accounts.google.com" in self.page.url or "welcome" in self.page.url:
+            logger.warning("=" * 65)
+            logger.warning("[ACTION REQUIRED] Google AI Studio requires Google Account login!")
+            logger.warning("Please sign into your Google account in the Chromium window.")
+            logger.warning("Waiting for login completion...")
+            logger.warning("=" * 65)
+
+            # Wait up to 3 minutes for user to sign in
+            start_wait = time.time()
+            while time.time() - start_wait < 180:
+                if self.page.is_closed() or self.is_shutting_down:
+                    break
+                ta = self.page.locator('.prompt-box-container textarea, textarea[formcontrolname="promptText"], textarea[aria-label*="prompt" i], textarea[placeholder*="Type" i]').first
+                if await ta.count() > 0 and await ta.is_visible():
+                    logger.info("Login confirmed! Prompt textarea detected.")
+                    break
+                await asyncio.sleep(2)
+
+        prompt_ui = self.page.locator('textarea[aria-label*="prompt" i], textarea[placeholder*="Type" i], textarea[formcontrolname="promptText"]').first
+        try:
+            await prompt_ui.wait_for(state="visible", timeout=8000)
+            self.is_ready = True
+        except Exception:
+            self.is_ready = False
+            logger.warning("AI Studio prompt UI unavailable; authenticated requests will return 503.")
+            return
+        logger.info("Google AI Studio web page ready!")
+
+        await self.ensure_model(DEFAULT_MODEL)
+        await self.ensure_thinking_mode()
+        await disable_functions(self.page)
+        await disable_structured(self.page)
+        await self.ensure_tools(ENABLE_SEARCH_GROUNDING)
+        await self.ensure_url_context()
+        self.is_ready = self.model_catalog_observed
+
+
+    async def stop(self):
+        self.tool_run.clear()
+        logger.info("Closing browser context...")
+        self.is_shutting_down = True
+        self.is_ready = False
+        try:
+            if self.context:
+                await self.context.close()
+        except Exception:
+            pass
+        try:
+            if self.playwright:
+                await self.playwright.stop()
+        except Exception:
+            pass
+        logger.info("Browser stopped.")

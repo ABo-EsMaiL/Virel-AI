@@ -23,7 +23,7 @@ async def run_image(body, sources):
     sem = _get_semaphore()
     if sem.locked():
         raise GatewayError(429, 'Browser is processing another request.', 'concurrency_limit')
-    require_ready()
+    await require_ready()
     request_id = 'image_'+uuid.uuid4().hex[:16]
     async with sem:
         async with browser_manager.lock:
@@ -65,7 +65,7 @@ async def edits(request: Request):
             raise GatewayError(400, 'Repeated image parameters are unsupported.', 'unsupported_parameter')
         body = {key: value for key, value in form.items() if key != field}
         image_options(body)
-        require_ready()
+        await require_ready()
         if _get_semaphore().locked():
             raise GatewayError(429, 'Browser is processing another request.', 'concurrency_limit')
         uploads = form.getlist(field)
