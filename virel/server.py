@@ -7,18 +7,17 @@ from .files import prune_files, expiry_loop
 from .browser_pool import BrowserRequestMiddleware
 from json import JSONDecodeError
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request
 from .images import MAX_REQUEST_BYTES
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
-from .errors import http_error_handler, validation_error_handler, rate_limit_handler
+from .errors import GatewayError, http_error_handler, validation_error_handler, rate_limit_handler
 from slowapi.errors import RateLimitExceeded
 
 from .config import DEFAULT_MODEL, THINKING_MODE, CHROME_PROFILE_DIR, HEADLESS, PORT, MAX_CONCURRENT, RATE_LIMIT
 from .runtime import browser_manager, limiter, _get_semaphore
-from .routes import chat, responses, completions, system, files, audio, image_generation
+from .routes import chat, responses, completions, system, files, audio, image_generation, anthropic
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("virel.webhook")
@@ -35,8 +34,8 @@ class RequestSizeLimit:
         headers = dict(scope.get("headers", []))
         declared = headers.get(b"content-length")
         if declared is not None and (len(declared) > 10 or not declared.isdigit() or int(declared) > MAX_REQUEST_BYTES):
-            response = JSONResponse({"error": {"message": "Request body exceeds the configured byte limit or has invalid length.",
-                "type": "invalid_request_error", "code": "request_too_large"}}, status_code=413)
+            response = await http_error_handler(Request(scope), GatewayError(413,
+                "Request body exceeds the configured byte limit or has invalid length.", "request_too_large"))
             return await response(scope, receive, send)
         body = bytearray()
         while True:
@@ -45,8 +44,8 @@ class RequestSizeLimit:
                 return
             chunk = event.get("body", b"")
             if len(body) + len(chunk) > MAX_REQUEST_BYTES:
-                response = JSONResponse({"error": {"message": "Request body exceeds the configured byte limit.",
-                    "type": "invalid_request_error", "code": "request_too_large"}}, status_code=413)
+                response = await http_error_handler(Request(scope), GatewayError(413,
+                    "Request body exceeds the configured byte limit.", "request_too_large"))
                 return await response(scope, receive, send)
             body.extend(chunk)
             if not event.get("more_body", False):
@@ -111,5 +110,5 @@ app.add_middleware(
 app.add_middleware(RequestSizeLimit)
 app.add_middleware(BrowserRequestMiddleware, pool=browser_manager)
 
-for route_module in (chat, responses, completions, system, files, audio, image_generation):
+for route_module in (chat, responses, completions, system, files, audio, image_generation, anthropic):
     app.include_router(route_module.router)

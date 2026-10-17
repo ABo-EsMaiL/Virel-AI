@@ -23,12 +23,19 @@ def provider_error(exc):
 
 
 async def http_error_handler(request, exc):
+    if request.scope.get("path", "").startswith("/v1/messages"):
+        from .anthropic import native_error
+        return JSONResponse(native_error(exc), status_code=exc.status_code, headers=exc.headers)
     return JSONResponse({"error": provider_error(exc)}, status_code=exc.status_code, headers=exc.headers)
 
 
 async def validation_error_handler(request, exc):
+    if request.scope.get("path", "").startswith("/v1/messages"):
+        return await http_error_handler(request, GatewayError(400, "Invalid request body.", "validation_error"))
     return JSONResponse({"error": {"message": "Invalid request body.", "type": "invalid_request_error", "code": "validation_error"}}, status_code=422)
 
 
 async def rate_limit_handler(request, exc):
+    if request.scope.get("path", "").startswith("/v1/messages"):
+        return await http_error_handler(request, GatewayError(429, "Gateway rate limit exceeded.", "rate_limit_exceeded"))
     return JSONResponse({"error": {"message": "Gateway rate limit exceeded.", "type": "rate_limit_error", "code": "rate_limit_exceeded"}}, status_code=429)

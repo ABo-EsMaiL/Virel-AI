@@ -22,3 +22,9 @@ async def verify_api_key(authorization: Optional[str] = Header(None)):
             detail={"error": "Invalid Gateway API Key", "type": "auth_error"}
         )
     return True
+
+
+async def verify_native_key(authorization: Optional[str] = Header(None), x_api_key: Optional[str] = Header(None)):
+    if x_api_key is not None and authorization is not None and authorization != "Bearer " + x_api_key:
+        raise HTTPException(401, detail={"message":"Conflicting gateway credentials.","type":"auth_error"})
+    return await verify_api_key(authorization or ("Bearer " + x_api_key if x_api_key else None))
