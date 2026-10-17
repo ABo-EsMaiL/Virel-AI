@@ -51,7 +51,12 @@ def extract_prompt_and_images(messages: List[ChatMessage]) -> Tuple[str, List[An
                     raise GatewayError(400, "Unsupported message content type.", "unsupported_capability")
         else:
             raise GatewayError(400, "Message content must be text or supported parts.", "invalid_request")
-        turns.append({"role": message.role, "content": "\n".join(text_parts)})
+        turn = {"role": message.role, "content": "\n".join(text_parts)}
+        if message.phase is not None:
+            if message.role != "assistant":
+                raise GatewayError(400, "Only assistant messages have a phase.", "invalid_request")
+            turn["phase"] = message.phase
+        turns.append(turn)
     if sources and not has_text:
         if any(is_video_source(source) for source in sources):
             prompt = "Describe the attached video and any other attachments."
@@ -114,7 +119,10 @@ def responses_messages(body):
                 content = normalized
             elif not isinstance(content, str):
                 raise GatewayError(400, "Messages require text content.", "invalid_request")
-            result.append(ChatMessage(role=role, content=content))
+            phase = item.get("phase")
+            if phase is not None and (role != "assistant" or phase not in ("commentary", "final_answer")):
+                raise GatewayError(400, "Invalid assistant message phase.", "invalid_request")
+            result.append(ChatMessage(role=role, content=content, phase=phase))
     else:
         raise GatewayError(400, "Input must be text or messages.", "invalid_request")
     if body.get("instructions"):

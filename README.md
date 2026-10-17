@@ -100,6 +100,33 @@ The `model` is the native `ChatOpenAI` configured above; both Chat Completions a
 
 Native graph tool loops, streams, pause/resume, task isolation and cancellation passed offline tests with mocked browser generation. Live LangGraph acceptance remains user-owned. See the [official quickstart](https://docs.langchain.com/oss/python/langgraph/quickstart).
 
+## Codex
+
+Codex can select Virel as a custom HTTP Responses provider. Use your actual Gemini model ID and gateway key; keep your existing provider configuration separate:
+
+```toml
+model = "gemini-flash-latest"
+model_provider = "virel"
+model_reasoning_effort = "high"
+model_reasoning_summary = "none"
+web_search = "disabled"
+
+[model_providers.virel]
+name = "Virel AI"
+base_url = "http://localhost:8001/v1"
+env_key = "VIREL_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+supports_websockets = false
+request_max_retries = 0
+stream_max_retries = 0
+stream_idle_timeout_ms = 1200000
+```
+
+Responses accepts flat functions and namespace groups of typed JSON functions. Public function names, namespaces and call IDs survive the native relay mapping; the caller still executes every tool. Optional request routing metadata is validated and discarded. `prompt_cache_key` does not enable a gateway cache; an encrypted-reasoning include request does not create reasoning content. Assistant message phases are preserved.
+
+Native CLI0.162.0-alpha.17.2 and0.163.0-alpha.10.2 text/SSE, usage and tool-result transport were checked with mocked browser generation. The test environment blocked Codex shell commands, so actual file read/write acceptance remains pending. No live Codex/Google compatibility is claimed from these checks. Custom freeform/grammar tools, hosted OpenAI tools, remote compaction and WebSockets remain unsupported. Codex may warn that its bundled catalog lacks Gemini metadata; Virel keeps the actual Gemini model identity. See the [official provider configuration](https://developers.openai.com/codex/config-advanced).
+
 ## Client tools and agents
 
 Chat Completions and Responses accept client-owned `type:function` tools in JSON or SSE mode. Tool histories currently accept text only; file analysis uses a separate ordinary multimodal request before tool rounds. AI Studio receives one real native relay function, `virel_client_tools`, whose array carries original tool names and typed JSON argument objects. Virel validates each against the caller schema and serializes standard client argument strings in `tool_calls` / `function_call` items, preserving quoted HTML and text. Client results return together as one native function response in the same browser chat. `X-Virel-Tool-Transport: native_function_batch` discloses this mapping. Your client executes every tool; Virel never runs them. Structured Outputs is not used for this transport.
