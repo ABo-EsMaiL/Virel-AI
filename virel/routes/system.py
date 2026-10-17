@@ -13,12 +13,13 @@ router = APIRouter()
 
 
 @router.get("/debug/state", dependencies=[Depends(verify_api_key)])
-async def debug_state():
-    if not browser_manager.page or browser_manager.page.is_closed():
+async def debug_state(page_id: str | None = None):
+    browser = browser_manager.diagnostic(page_id)
+    if not browser.page or browser.page.is_closed():
         return {"error": "no page"}
-    body_text = await browser_manager.page.evaluate("() => (document.body.innerText || '').slice(0, 3000)")
-    html_sample = await browser_manager.page.evaluate("() => (document.body.innerHTML || '').slice(0, 3000)")
-    turns_info = await browser_manager.page.evaluate('''() => {
+    body_text = await browser.page.evaluate("() => (document.body.innerText || '').slice(0, 3000)")
+    html_sample = await browser.page.evaluate("() => (document.body.innerHTML || '').slice(0, 3000)")
+    turns_info = await browser.page.evaluate('''() => {
         const turns = Array.from(document.querySelectorAll('ms-chat-turn, .chat-turn'));
         return turns.map((t, idx) => ({
             index: idx,
@@ -33,7 +34,7 @@ async def debug_state():
             preview: (t.innerText || '').slice(0, 150)
         }));
     }''')
-    await browser_manager.page.screenshot(path=f"{RUNTIME_DIR}/debug_state.png")
+    await browser.page.screenshot(path=f"{RUNTIME_DIR}/debug_state_{browser.request_id}.png")
     return {"body_text": body_text, "turns": turns_info, "html": html_sample}
 
 
@@ -46,6 +47,8 @@ async def health_check():
         "gateway": "Virel AI (AIStudio Web Hook)",
         "version": "0.1.1",
         "browser_ready": browser_manager.is_ready,
+        "browser_state_scope": "control_page",
+        "requests": browser_manager.stats(),
         "session_file_exists": has_session,
         "headless": HEADLESS,
         "default_model": DEFAULT_MODEL,
@@ -92,10 +95,11 @@ async def list_models(refresh: bool = False):
 
 
 @router.get("/debug_dom", dependencies=[Depends(verify_api_key)])
-async def debug_dom():
-    if not browser_manager.page or browser_manager.page.is_closed():
+async def debug_dom(page_id: str | None = None):
+    browser = browser_manager.diagnostic(page_id)
+    if not browser.page or browser.page.is_closed():
         return {"error": "no page"}
-    data = await browser_manager.page.evaluate('''() => {
+    data = await browser.page.evaluate('''() => {
         const matSelects = Array.from(document.querySelectorAll('mat-select')).map(s => ({
             aria: s.getAttribute('aria-label') || '',
             text: (s.innerText || '').trim(),

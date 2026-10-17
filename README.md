@@ -175,3 +175,12 @@ Defaults:4096input characters,50MiB source/output and600seconds source duration,
 ## License
 
 [MIT](LICENSE). Original attribution is preserved.
+
+
+## Concurrent requests
+
+One Chromium process/profile hosts independent request pages. Each page has its own model/settings, usage observer and client-tool state. Validated tool results resume their original page; nested ordinary requests can run on other pages. Waiting tool rounds release execution capacity. Completed pages close after response transmission; one control page stays open.
+
+`VIREL_MAX_CONCURRENT=20` is an upper ceiling. Available-memory reserve and configurable per-active-task growth headroom can reduce running work. `VIREL_MAX_QUEUE`, `VIREL_QUEUE_TIMEOUT_SECONDS` and `VIREL_MAX_WAITING_TABS` bound waiting work; see `.env.example`. Linux container memory limits are included when available. Queue exhaustion returns429; streamed failures use the protocol error event. Memory estimates do not guarantee protection from every OS/provider failure.
+
+`/health` reports pool counts and opaque page IDs; authenticated diagnostics accept `?page_id=...`. Its model/settings fields describe the control page. Client-tool IDs identify continuations; standard requests do not expose ordinary parent/child ancestry. No history store, tool executor or client changes are required. Keep one server worker per profile. Actual Google parallel capacity and multi-client acceptance remain unverified; extra pages do not increase account quotas.

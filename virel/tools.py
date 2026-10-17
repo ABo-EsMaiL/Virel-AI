@@ -253,6 +253,8 @@ async def function_response(body, responses, sem, owner=""):
     require_ready()
     identifier = ("resp_" if responses else "chatcmpl-") + uuid.uuid4().hex[:16]
     now, model = int(time.time()), body.get("model", DEFAULT_MODEL)
+    from .runtime import browser_manager
+    browser_manager.prepare(plan["history"], bool(plan["declarations"]))
     events = _function_events(plan, options, sem, owner, identifier, now, model, responses, body.get("stream", False))
     if body.get("stream", False):
         return stream_response(events, responses, identifier, now, model, validate_stream(body, responses),
