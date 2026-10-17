@@ -88,8 +88,10 @@ def schema_parts(schema):
             native["items"] = convert(node["items"])
         elif kind == "array":
             fail("Array schemas require a typed items schema.")
-        if "additionalProperties" in node and not isinstance(node["additionalProperties"], bool):
-            fail("Only boolean additionalProperties is supported.", unsupported=True)
+        # MCP converters can represent unrestricted properties as {} instead of true.
+        additional = node.get("additionalProperties", True)
+        if not isinstance(additional, bool) and additional != {}:
+            fail("Only boolean or empty-schema additionalProperties is supported.", unsupported=True)
         return native
     native = convert(schema)
     dialect = schema.get("$schema", "https://json-schema.org/draft/2020-12/schema")
