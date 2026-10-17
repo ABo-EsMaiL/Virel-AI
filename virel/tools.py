@@ -250,7 +250,7 @@ async def function_response(body, responses, sem, owner=""):
     if ordinary.get("text") == {}: ordinary.pop("text")
     options = validate_options(ordinary)
     if body.get("prompt"): fail("Reusable prompt templates are unavailable.", unsupported=True)
-    require_ready()
+    await require_ready()
     identifier = ("resp_" if responses else "chatcmpl-") + uuid.uuid4().hex[:16]
     now, model = int(time.time()), body.get("model", DEFAULT_MODEL)
     from .runtime import browser_manager

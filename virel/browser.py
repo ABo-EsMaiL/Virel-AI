@@ -891,7 +891,18 @@ class BrowserPage:
 
 class WebHookBrowserManager(BrowserPage):
     """Sole persistent Chromium/profile lifecycle owner; request pages never launch it."""
+    def __init__(self):
+        super().__init__()
+        self.context_closed = False
+
+    def _on_context_closed(self, context):
+        if context is self.context:
+            self.context_closed = True
+            self.is_ready = False
+
     async def start(self):
+        self.is_shutting_down = False
+        self.is_ready = False
         logger.info(f"Launching persistent Chromium context from: {CHROME_PROFILE_DIR} (headless={HEADLESS}, start-maximized)")
         self.playwright = await async_playwright().start()
 
@@ -913,6 +924,8 @@ class WebHookBrowserManager(BrowserPage):
             logger.error(f"Please ensure no other Chromium process is using {CHROME_PROFILE_DIR}.")
             raise e
 
+        self.context_closed = False
+        self.context.on("close", self._on_context_closed)
         self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
 
         self.attach_page_listeners()

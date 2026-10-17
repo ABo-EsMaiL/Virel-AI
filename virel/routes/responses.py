@@ -42,7 +42,7 @@ async def responses_endpoint(request: Request):
     generation_options = validate_options(body)
     if body.get("prompt"):
         raise GatewayError(400, "Reusable prompt templates are not supported yet.", "unsupported_capability")
-    require_ready()
+    await require_ready()
     model_name = body.get("model", DEFAULT_MODEL)
     stream = body.get("stream", False)
     prompt, images = extract_prompt_and_images(responses_messages(body))

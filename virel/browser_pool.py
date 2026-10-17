@@ -43,6 +43,7 @@ class BrowserPool:
         self.slots, self.queue, self.quarantined = {}, [], {}
         self.active = self.incoming = self.reserved_tools = 0
         self.condition = asyncio.Condition()
+        self.recovery_lock = asyncio.Lock()
         self.closing = False
 
     @property
@@ -86,6 +87,26 @@ class BrowserPool:
         scope = self.current
         if scope is not None:
             scope.history, scope.tool_capable = history, tool_capable
+
+    async def recover_browser(self):
+        owner = self._owner
+        if owner.context is None or not owner.context_closed:
+            return
+        async with self.recovery_lock:
+            if self.closing:
+                raise GatewayError(503, "Browser is shutting down.", "browser_not_ready")
+            if not owner.context_closed:
+                return
+            # Restart only a closed context; never interrupt live pages or replay their work.
+            logger.warning("Browser context closed; reopening the configured profile.")
+            with CancelScope(shield=True):
+                await owner.stop()
+                try:
+                    await owner.start()
+                except Exception:
+                    await owner.stop()
+                    logger.warning("Browser recovery failed; a later request may retry startup.")
+                    raise GatewayError(503, "Browser could not reopen. Check the browser login and profile.", "browser_not_ready") from None
 
     async def create_page(self):
         from .browser import BrowserPage
@@ -256,7 +277,8 @@ class BrowserPool:
             self.slots.clear()
             self.condition.notify_all()
         await asyncio.gather(*(self.close_page(w) for w in workers))
-        if hasattr(self._owner, "stop"): await self._owner.stop()
+        async with self.recovery_lock:
+            if hasattr(self._owner, "stop"): await self._owner.stop()
 
     def diagnostic(self, page_id=None):
         if page_id:

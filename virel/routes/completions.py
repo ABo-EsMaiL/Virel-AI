@@ -19,7 +19,7 @@ async def legacy_completions(request: Request):
     """Legacy OpenAI /v1/completions endpoint."""
     body = await request.json()
     generation_options = validate_options(body)
-    require_ready()
+    await require_ready()
     prompt = body.get("prompt", "")
     if isinstance(prompt, list):
         prompt = " ".join([str(p) for p in prompt])
