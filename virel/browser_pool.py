@@ -9,13 +9,13 @@ from types import SimpleNamespace
 from pathlib import Path
 from anyio import CancelScope
 import psutil
-from starlette.responses import JSONResponse
-from .errors import GatewayError, provider_error
+from starlette.requests import Request
+from .errors import GatewayError, http_error_handler
 from .tool_runs import digest
 
 logger = logging.getLogger("virel.webhook")
 MB = 1024 * 1024
-GENERATING = {"/v1/chat/completions", "/v1/responses", "/responses", "/v1/completions",
+GENERATING = {"/v1/messages", "/v1/chat/completions", "/v1/responses", "/responses", "/v1/completions",
               "/v1/images/generations", "/v1/images/edits", "/v1/audio/transcriptions",
               "/v1/audio/translations", "/v1/audio/speech"}
 
@@ -313,7 +313,10 @@ class BrowserRequestMiddleware:
         if scope["type"] != "http" or scope.get("method") != "POST" or path not in GENERATING | {"/v1/files"}:
             return await self.app(scope, receive, send)
         headers = dict(scope.get("headers", []))
-        request = self.pool.new_scope(headers.get(b"authorization", b"").decode("latin1"), path in GENERATING)
+        owner = headers.get(b"authorization", b"")
+        if path == "/v1/messages" and not owner:
+            owner = b"Bearer " + headers.get(b"x-api-key", b"")
+        request = self.pool.new_scope(owner.decode("latin1"), path in GENERATING)
         started = finished = False
         token = self.pool._scope.set(request)
         async def guarded_receive():
@@ -335,7 +338,7 @@ class BrowserRequestMiddleware:
             await self.app(scope, guarded_receive, tracked_send)
         except GatewayError as error:
             if started: raise
-            response = JSONResponse({"error":provider_error(error)}, status_code=error.status_code)
+            response = await http_error_handler(Request(scope), error)
             await response(scope, receive, tracked_send)
         finally:
             with CancelScope(shield=True):

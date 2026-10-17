@@ -281,6 +281,26 @@ def _history(body, responses, origins=None):
     return history
 
 
+def materialize_defaults(value, schema, budget=None):
+    """Publish explicit schema defaults before native clients apply them to calls."""
+    if budget is None:
+        budget = [65536 - len(json.dumps(value, ensure_ascii=False).encode("utf-8"))]
+    if isinstance(value, dict):
+        value = dict(value)
+        for key, subschema in schema.get("properties", {}).items():
+            if key not in value and "default" in subschema:
+                encoded = bounded(subschema["default"], 32768, "Function default")
+                budget[0] -= len(encoded.encode("utf-8")) + len(key.encode("utf-8")) + 4
+                if budget[0] < 0:
+                    fail("Defaulted function arguments exceed the byte limit.", True)
+                value[key] = json.loads(encoded)
+            if key in value:
+                value[key] = materialize_defaults(value[key], subschema, budget)
+    elif isinstance(value, list):
+        value = [materialize_defaults(item, schema.get("items", {}), budget) for item in value]
+    return value
+
+
 def validate_calls(calls, plan):
     if not isinstance(calls, list) or (not plan["parallel"] and len(calls) > 1): fail("Invalid number of model function calls.", True)
     if calls and plan["choice"] == "none": fail("Model called a function despite tool_choice:none.", True)
@@ -291,6 +311,8 @@ def validate_calls(calls, plan):
         name = call.get("name")
         if not isinstance(name, str) or name not in plan["validators"] or (plan["named"] and name != plan["named"]): fail("Model requested an undeclared function.", True)
         obj = arguments(call.get("arguments"), True, allow_object=True)
+        if plan.get("materialize_defaults"):
+            obj = arguments(materialize_defaults(obj, plan["validators"][name].schema), True, allow_object=True)
         if not plan["validators"][name].is_valid(obj): fail("Model function arguments did not satisfy the caller schema.", True)
         result.append({"id": "call_" + uuid.uuid4().hex[:24], "type": "function",
                        "function": {"name": name, "arguments": json.dumps(obj, ensure_ascii=False, separators=(",", ":"))}})

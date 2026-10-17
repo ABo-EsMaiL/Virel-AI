@@ -8,7 +8,7 @@ import time
 import uuid
 from contextlib import aclosing
 from typing import AsyncGenerator, List, Optional, Union
-from playwright.async_api import async_playwright, BrowserContext, Page
+from playwright.async_api import async_playwright, BrowserContext, Page, Error as PlaywrightError
 
 from .config import (RUNTIME_DIR, CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, ENABLE_SEARCH_GROUNDING, ENABLE_URL_CONTEXT, TARGET_URL, TOOL_RUN_TTL_SECONDS)
 from .dom import FETCH_RESPONSE_STATE, START_ERROR_WATCH, STOP_ERROR_WATCH
@@ -359,7 +359,7 @@ class BrowserPage:
             "tier": f"trigger-driven ({case_count} cases)"
         }
 
-    async def send_prompt_and_stream(self, prompt, model_name=None, batch_size=None, enable_search=None, images=None, request_id=None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto", image_settings=None, function_settings=None, continuation=None):
+    async def send_prompt_and_stream(self, prompt, model_name=None, batch_size=None, enable_search=None, images=None, request_id=None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto", image_settings=None, function_settings=None, continuation=None, max_output_tokens=None):
         attempt_id = request_id or uuid.uuid4().hex
         self.last_usage = None
         self.comparison_skipped = False
@@ -368,7 +368,7 @@ class BrowserPage:
         final_text = ""
         result = {}
         try:
-            async with aclosing(self._generate_in_page(prompt, model_name, batch_size, enable_search, images, reasoning_effort=reasoning_effort, temperature=temperature, output_kind=output_kind, image_size=image_size, image_settings=image_settings, function_settings=function_settings, continuation=continuation)) as stream:
+            async with aclosing(self._generate_in_page(prompt, model_name, batch_size, enable_search, images, reasoning_effort=reasoning_effort, temperature=temperature, output_kind=output_kind, image_size=image_size, image_settings=image_settings, function_settings=function_settings, continuation=continuation, max_output_tokens=max_output_tokens)) as stream:
                 async for item in stream:
                     if isinstance(item, dict):
                         if "error" in item:
@@ -390,6 +390,26 @@ class BrowserPage:
             usage = await self.usage_observer.finish(attempt_id)
             self.last_usage = None if self.comparison_skipped else usage
         yield {**result, "text": final_text, "delta": final_text}
+
+    async def ensure_max_output_tokens(self, value):
+        """Apply the caller's native Messages output cap, with readback before Send."""
+        try:
+            control = self.page.locator('input[aria-label="Maximum output tokens"]').first
+            advanced = self.page.get_by_role("button", name=re.compile("Advanced settings", re.I)).first
+            if not await control.is_visible() and await advanced.count() and await advanced.is_visible():
+                await advanced.click()
+            if not await control.count() or not await control.is_visible() or not await control.is_enabled():
+                raise GatewayError(400, "max_tokens control is unavailable for this UI model.", "unsupported_parameter")
+            low = await control.get_attribute("aria-valuemin") or await control.get_attribute("min")
+            high = await control.get_attribute("aria-valuemax") or await control.get_attribute("max")
+            if (low is not None and value < float(low)) or (high is not None and value > float(high)):
+                raise GatewayError(400, "max_tokens exceeds the selected UI model range.", "unsupported_parameter")
+            await control.fill(str(value))
+            await control.press("Tab")
+            if float(await control.input_value()) != value or await control.get_attribute("aria-invalid") == "true":
+                raise GatewayError(503, "AI Studio max_tokens setting could not be verified.", "settings_unavailable")
+        except (ValueError, PlaywrightError):
+            raise GatewayError(503, "AI Studio max_tokens control is unavailable.", "settings_unavailable") from None
 
     async def attach_files(self, paths: List[str]) -> bool:
         """Do not run until all current-request attachment chips are ready."""
@@ -418,7 +438,7 @@ class BrowserPage:
             return False
 
     async def _generate_in_page(
-        self, prompt: str, model_name: Optional[str] = None, batch_size: Optional[int] = None, enable_search: Optional[bool] = None, images: Optional[List[str]] = None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto", image_settings=None, function_settings=None, continuation=None
+        self, prompt: str, model_name: Optional[str] = None, batch_size: Optional[int] = None, enable_search: Optional[bool] = None, images: Optional[List[str]] = None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto", image_settings=None, function_settings=None, continuation=None, max_output_tokens=None
     ) -> AsyncGenerator[Union[dict, str], None]:
         """Injects the prompt (and optional images) into Google AI Studio and yields streaming text deltas."""
         t_req_start = time.time()
@@ -458,6 +478,9 @@ class BrowserPage:
             if enable_search is True and not (self.google_search_enabled and self.search_verified):
                 yield {"error": "[Error: UNSUPPORTED_GOOGLE_SEARCH - requested search is not available]"}
                 return
+
+        if max_output_tokens is not None:
+            await self.ensure_max_output_tokens(max_output_tokens)
 
         # Ensure no stray menus or overlays exist
         try:

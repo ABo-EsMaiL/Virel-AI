@@ -127,6 +127,29 @@ Responses accepts flat functions and namespace groups of typed JSON functions. P
 
 Native CLI0.162.0-alpha.17.2 and0.163.0-alpha.10.2 text/SSE, usage and tool-result transport were checked with mocked browser generation. The test environment blocked Codex shell commands, so actual file read/write acceptance remains pending. No live Codex/Google compatibility is claimed from these checks. Custom freeform/grammar tools, hosted OpenAI tools, remote compaction and WebSockets remain unsupported. Codex may warn that its bundled catalog lacks Gemini metadata; Virel keeps the actual Gemini model identity. See the [official provider configuration](https://developers.openai.com/codex/config-advanced).
 
+## Claude Code
+
+An experimental Anthropic Messages subset is available at POST `/v1/messages`. Native Claude Code2.1.302 was checked in official `--bare` mode (Bash/Edit/Read), with browser generation mocked: text/SSE, reported usage and a real temporary file read/edit cycle. Live Google and full-mode/plugin compatibility remain unverified. Anthropic does not support routing Claude Code to non-Claude models.
+
+Set `ANTHROPIC_BASE_URL=http://localhost:8001` (without /v1), `ANTHROPIC_API_KEY` to your gateway key and `--model gemini-flash-latest`. Keep these in an isolated client environment; model identity remains Gemini. The server executes no client tools. Declared tool defaults are materialized before call IDs/hashes are bound, preserving strict continuation validation.
+
+Required `max_tokens` is applied and verified in the model's native UI range. Adaptive thinking maps to native low/medium/high effort without exposing Claude thinking signatures. Cache hints are accepted as advisory only; no cache is created or counted. Unknown usage remains null. Streaming uses the same paced completed-browser display as other protocols. Stop reasons identify browser completion or tool use; exact provider token-limit finish classification is not yet available.
+
+Exact pre-generation token counting returns501. Signed thinking, thinking budgets, hosted tools, structured outputs, stop sequences, context compaction and media-bearing tool histories are unsupported. Ordinary image/document requests reuse existing media validation. The native CLI may retry an initially failed stream once as JSON; the gateway itself does not retry or replay tools. See the [official gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol).
+
+## Hermes setup
+
+Run `hermes model`, choose **Custom endpoint**, then enter:
+
+| Setting | Value |
+|---|---|
+| Base URL | `http://localhost:8001/v1` |
+| API key | Your gateway `VIREL_API_KEY` |
+| Model | `gemini-flash-latest` |
+| API mode, if prompted | `chat_completions` |
+
+Start a fresh Hermes session after saving. This setup follows the [official provider guide](https://hermes-agent.nousresearch.com/docs/integrations/providers/) and installed0.21.5 settings; live Hermes compatibility is not yet verified. Use native `low`, `medium` or `high` reasoning effort, not unsupported higher levels. A remote/container client needs a reachable server address instead of its own localhost.
+
 ## Client tools and agents
 
 Chat Completions and Responses accept client-owned `type:function` tools in JSON or SSE mode. Tool histories currently accept text only; file analysis uses a separate ordinary multimodal request before tool rounds. AI Studio receives one real native relay function, `virel_client_tools`, whose array carries original tool names and typed JSON argument objects. Virel validates each against the caller schema and serializes standard client argument strings in `tool_calls` / `function_call` items, preserving quoted HTML and text. Client results return together as one native function response in the same browser chat. `X-Virel-Tool-Transport: native_function_batch` discloses this mapping. Your client executes every tool; Virel never runs them. Structured Outputs is not used for this transport.
