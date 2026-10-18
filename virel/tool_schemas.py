@@ -159,7 +159,8 @@ def project_schema(schema):
             if kind!="object" or not isinstance(node["properties"],dict): fail("Invalid schema properties.")
             children={key:compile(value,depth+1,refs) for key,value in node["properties"].items()}
             native["properties"]={key:value.native for key,value in children.items()}
-        if "required" in node: native["required"]=node["required"]
+        # The editor removes empty properties, then rejects even an empty required list.
+        if node.get("required"): native["required"]=node["required"]
         if "items" in node:
             if kind!="array": fail("Schema items require an array.")
             items=compile(node["items"],depth+1,refs)
