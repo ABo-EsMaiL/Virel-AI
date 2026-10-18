@@ -1,6 +1,7 @@
 """Bounded native typed schema projection; original client schemas stay authoritative."""
 from dataclasses import dataclass, field
 import re
+import logging
 from .errors import GatewayError
 
 KEYS={"type","properties","required","items","description","enum","additionalProperties",
@@ -9,6 +10,13 @@ KEYS={"type","properties","required","items","description","enum","additionalPro
       "anyOf","oneOf","const","$defs","definitions","$ref","examples","example","$comment",
       "deprecated","readOnly","writeOnly","pattern"}
 TYPES={"object","array","string","number","integer","boolean","null"}
+logger = logging.getLogger("virel.webhook")
+DIAGNOSTIC_KEYWORDS = {"format", "allOf", "not", "if", "then", "else", "uniqueItems", "multipleOf",
+                       "contains", "minContains", "maxContains", "prefixItems", "additionalItems",
+                       "patternProperties", "propertyNames", "dependencies", "dependentRequired",
+                       "dependentSchemas", "unevaluatedProperties", "unevaluatedItems",
+                       "$id", "$anchor", "$dynamicRef", "$dynamicAnchor", "contentEncoding",
+                       "contentMediaType", "contentSchema"}
 
 def fail(message, upstream=False):
     raise GatewayError(502 if upstream else 400,message,
@@ -179,7 +187,12 @@ def project_schema(schema):
     def inspect(node,depth=0,refs=()):
         inspection_budget[0]-=1
         if depth>24 or inspection_budget[0]<0: fail("Function schema exceeds its nesting bound.")
-        if not isinstance(node,dict) or set(node)-KEYS: fail("Unsupported function schema keyword.")
+        if not isinstance(node,dict) or set(node)-KEYS:
+            unknown = set(node)-KEYS if isinstance(node,dict) else set()
+            labels = sorted(key if key in DIAGNOSTIC_KEYWORDS else "<unknown>" for key in unknown)[:16]
+            logger.warning("Function schema rejected depth=%d node_type=%s unsupported=%s count=%d",
+                           depth, type(node).__name__, labels, len(unknown))
+            fail("Unsupported function schema keyword.")
         if "pattern" in node: safe_pattern(node["pattern"])
         if "$ref" in node:
             ref=node["$ref"]
