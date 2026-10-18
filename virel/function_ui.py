@@ -18,9 +18,14 @@ def _canonical(value):
     if isinstance(value, list): return [_canonical(item) for item in value]
     if isinstance(value, dict):
         # AI Studio omits the empty properties map on zero-argument objects.
-        return {k: _canonical(v) for k, v in value.items()
-                if not (value.get("type") == "object" and
-                        (k == "propertyOrdering" or (k == "properties" and v == {})))}
+        result = {k: _canonical(v) for k, v in value.items()
+                  if not (value.get("type") == "object" and
+                          (k == "propertyOrdering" or (k == "properties" and v == {})))}
+        # Save reorders required field names; membership, not position, defines the schema.
+        required = result.get("required")
+        if value.get("type") == "object" and isinstance(required, list) and all(isinstance(k, str) for k in required):
+            result["required"] = sorted(required)
+        return result
     return value
 
 
