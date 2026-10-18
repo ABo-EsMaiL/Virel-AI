@@ -302,3 +302,7 @@ Chat Completions, Responses and legacy text requests accept max_tokens, max_comp
 [examples/opencode.json](examples/opencode.json) configures the native @ai-sdk/openai-compatible provider against http://localhost:8001/v1. Supply the existing gateway key as VIREL_API_KEY in the client environment; the example contains no secret. Put the example in a separate trial project, start OpenCode, and select virel/gemini-flash-latest. Tool actions require approval.
 
 This is an initial setup example, not certified OpenCode compatibility. Native configuration parsing was checked with OpenCode 1.18.33; live text and tool acceptance remain pending. Existing gateway protocols and client-owned execution/history are unchanged.
+
+## VS Code clients
+
+[Native Cline and Continue setup](examples/vscode-clients.md) includes the local gateway fields, a secret-free Continue YAML model block, and independent text/file acceptance steps. Setup is prepared for Cline 4.1.24 and Continue 2.0.0; live client acceptance remains pending. Existing gateway contracts are unchanged.

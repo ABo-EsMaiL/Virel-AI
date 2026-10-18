@@ -1,0 +1,20 @@
+name: Virel AI Trial
+version: 1.0.0
+schema: v1
+models:
+  - name: Virel Gemini Flash
+    provider: openai
+    model: gemini-flash-latest
+    apiBase: http://localhost:8001/v1
+    apiKey: ${{ secrets.VIREL_API_KEY }}
+    useResponsesApi: false
+    roles:
+      - chat
+      - edit
+      - apply
+    capabilities:
+      - tool_use
+      - image_input
+    defaultCompletionOptions:
+      contextLength: 65536
+      maxTokens: 8192
