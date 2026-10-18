@@ -9,7 +9,7 @@ from ..tools import is_tool_request, function_response, bounded
 from ..streaming import stream_response, text_events, validate_stream
 from ..auth import verify_api_key
 from ..errors import GatewayError
-from ..generation import checked_stream, require_ready, validate_options, usage_headers, response_model
+from ..generation import checked_stream, require_ready, validate_options, usage_headers, response_model, reasoning_headers
 from ..config import DEFAULT_MODEL, RATE_LIMIT
 from ..runtime import browser_manager, limiter, _get_semaphore
 from ..messages import extract_prompt_and_images, responses_messages
@@ -78,7 +78,7 @@ async def responses_endpoint(request: Request):
 
     if stream:
         return stream_response(text_events(prompt, resp_id, now, model_name, True, sem,
-            batch_size=batch_size, images=images, **generation_options), True, resp_id, now, model_name)
+            batch_size=batch_size, images=images, **generation_options), True, resp_id, now, model_name, headers=reasoning_headers(body))
     else:
         full_text = ""
         async with sem:
@@ -133,4 +133,5 @@ async def responses_endpoint(request: Request):
                     "X-Timing-Total": f"{timings.get('total', 0.0):.2f}s"
                 }
                 headers.update(usage_headers(resp_id))
+                headers.update(reasoning_headers(body))
                 return JSONResponse(response_payload, headers=headers)

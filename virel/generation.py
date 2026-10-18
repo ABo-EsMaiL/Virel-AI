@@ -51,15 +51,22 @@ def validate_options(body):
             raise GatewayError(400, "Conflicting reasoning effort fields.", "invalid_request")
         effort = nested if nested is not None else effort
     if effort is not None:
-        if not isinstance(effort, str) or effort not in ("low", "medium", "high"):
-            raise GatewayError(400, "Reasoning effort must be low, medium or high.", "unsupported_parameter")
-        options["reasoning_effort"] = effort
+        if not isinstance(effort, str) or effort not in ("low", "medium", "high", "max"):
+            raise GatewayError(400, "Reasoning effort must be low, medium, high or max (native high).", "unsupported_parameter")
+        options["reasoning_effort"] = "high" if effort == "max" else effort
     temperature = body.get("temperature")
     if temperature is not None:
         if isinstance(temperature, bool) or not isinstance(temperature, (int, float)) or not 0 <= temperature <= 2 or not math.isfinite(temperature):
             raise GatewayError(400, "Temperature must be a finite number between 0 and 2.", "invalid_request")
         options["temperature"] = temperature
     return options
+
+
+def reasoning_headers(body):
+    effort = body.get("reasoning_effort")
+    if effort is None and isinstance(body.get("reasoning"), dict):
+        effort = body["reasoning"].get("effort")
+    return {"X-Virel-Reasoning-Requested": "max", "X-Virel-Reasoning-Applied": "high"} if effort == "max" else {}
 
 
 def _browser_error(text):

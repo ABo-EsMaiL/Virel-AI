@@ -9,7 +9,7 @@ from ..tools import is_tool_request, function_response
 from ..streaming import stream_response, text_events, validate_stream
 from ..auth import verify_api_key
 from ..errors import GatewayError
-from ..generation import checked_stream, require_ready, validate_options, usage_headers, response_model
+from ..generation import checked_stream, require_ready, validate_options, usage_headers, response_model, reasoning_headers
 from ..config import DEFAULT_MODEL, RATE_LIMIT
 from ..runtime import browser_manager, limiter, _get_semaphore
 from ..schemas import ChatRequest
@@ -59,7 +59,7 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
     if chat_request.stream:
         return stream_response(text_events(prompt, chunk_id, now, model_name, False, sem,
             batch_size=batch_size, enable_search=enable_search, images=images, **generation_options),
-            False, chunk_id, now, model_name, include_usage)
+            False, chunk_id, now, model_name, include_usage, headers=reasoning_headers(body))
     else:
         full_text = ""
         async with sem:
@@ -82,6 +82,7 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
                     "X-Final-Status": str(timings.get('state', 'UNKNOWN')),
                 }
                 headers.update(usage_headers(chunk_id))
+                headers.update(reasoning_headers(body))
                 return JSONResponse({
                     "id": chunk_id,
                     "object": "chat.completion",
