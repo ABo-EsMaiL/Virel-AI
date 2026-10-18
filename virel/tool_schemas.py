@@ -164,6 +164,10 @@ def project_schema(schema):
         if "items" in node:
             if kind!="array": fail("Schema items require an array.")
             items=compile(node["items"],depth+1,refs)
+            # AI Studio drops item descriptions on Save; keep their guidance on the array.
+            item_description=items.native.pop("description",None)
+            if item_description:
+                native["description"]=(native.get("description","")+"\nEach item: "+item_description).lstrip("\n")
             native["items"]=items.native
         elif kind=="array": fail("Array schemas require typed items.")
         additional=node.get("additionalProperties",True)

@@ -1,6 +1,9 @@
 """Actual AI Studio function controls; no tool execution or prose inference."""
 import json
+import logging
 from .errors import GatewayError
+
+logger = logging.getLogger("virel.webhook")
 
 
 async def disable_functions(page):
@@ -20,6 +23,35 @@ def _canonical(value):
                         (k == "propertyOrdering" or (k == "properties" and v == {})))}
     return value
 
+
+
+def _difference(expected, observed, path="declarations"):
+    """Return a bounded structural location, never schema values or client property names."""
+    if type(expected) is not type(observed):
+        return path[:512] + ": type changed"
+    if isinstance(expected, dict):
+        keywords = {"type", "properties", "items", "required", "enum", "description",
+                    "parameters", "name", "propertyOrdering", "nullable", "format", "default"}
+        if expected.keys() != observed.keys():
+            missing = sorted((expected.keys() - observed.keys()) & keywords)
+            added = sorted((observed.keys() - expected.keys()) & keywords)
+            detail = " missing=" + ",".join(missing) + " added=" + ",".join(added) if missing or added else ""
+            return path[:512] + ": keys changed" + detail
+        for index, (key, value) in enumerate(expected.items()):
+            label = key if key in keywords else "[" + str(index) + "]"
+            difference = _difference(value, observed[key], path + "/" + label)
+            if difference:
+                return difference
+    elif isinstance(expected, list):
+        if len(expected) != len(observed):
+            return path[:512] + ": length changed"
+        for index, (value, other) in enumerate(zip(expected, observed)):
+            difference = _difference(value, other, path + "/" + str(index))
+            if difference:
+                return difference
+    elif expected != observed:
+        return path[:512] + ": value changed"
+    return None
 
 async def ensure_functions(page, declarations):
     try:
@@ -53,7 +85,10 @@ async def ensure_functions(page, declarations):
         await dialog.locator('button[aria-label="close"]').click(timeout=5000)
         await dialog.wait_for(state='hidden', timeout=5000)
         if _canonical(observed) != _canonical(declarations):
-            raise GatewayError(503, "AI Studio function declarations did not match the request.", "settings_unavailable")
+            difference = _difference(_canonical(declarations), _canonical(observed))
+            logger.warning("AI Studio declaration readback mismatch: %s", difference)
+            raise GatewayError(503, "AI Studio function declarations did not match the request.",
+                               "settings_unavailable", param=difference)
     except GatewayError:
         raise
     except Exception:
