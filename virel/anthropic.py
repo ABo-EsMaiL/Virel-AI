@@ -169,8 +169,17 @@ def normalize_request(body, *, desktop=False):
     if not isinstance(tools,list): invalid("tools must be an array.")
     if tools:
         converted["tools"]=[]
-        for tool in tools:
-            if not isinstance(tool,dict) or set(tool)-{"name","description","input_schema","cache_control","type"} or tool.get("type","custom") != "custom":
+        for index, tool in enumerate(tools):
+            extra = set(tool)-{"name","description","input_schema","cache_control","type"} if isinstance(tool,dict) else set()
+            kind = tool.get("type","custom") if isinstance(tool,dict) else None
+            if not isinstance(tool,dict) or extra or kind != "custom":
+                fields = sorted(key if isinstance(key,str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}",key)
+                                else "<redacted>" for key in extra)[:16]
+                kind_label = kind if isinstance(kind,str) and (kind == "custom" or re.fullmatch(r"(?:bash|text_editor|computer|web_search|web_fetch|tool_search_tool_regex|tool_search_tool_bm25)_[0-9]{8}",kind)) else type(kind).__name__
+                flags = {key:tool[key] if type(tool[key]) is bool else type(tool[key]).__name__
+                         for key in ("strict","defer_loading","eager_input_streaming") if isinstance(tool,dict) and key in tool}
+                logger.warning("Tool shape rejected index=%d kind=%s extra_count=%d extra_fields=%s flags=%s",
+                               index, kind_label, len(extra), fields, flags)
                 invalid("Only client-owned custom tools are available.",True)
             cache_hint(tool)
             converted["tools"].append({"type":"function","function":{"name":tool.get("name"),
