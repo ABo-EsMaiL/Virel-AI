@@ -284,7 +284,7 @@ Defaults:4096input characters,50MiB source/output and600seconds source duration,
 
 ## License
 
-Virel AI is licensed under the [Apache License 2.0](LICENSE). Original MSEMAX portions retain their [MIT copyright and license notice](LICENSES/MSEMAX-MIT.txt).
+Virel AI is licensed under the [Apache License 2.0](LICENSE). Copyright 2026 Ahmed AbdElHady Esmail; see [NOTICE](NOTICE). Original MSEMAX portions retain their [MIT copyright and license notice](LICENSES/MSEMAX-MIT.txt).
 
 
 ## Concurrent requests
