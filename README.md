@@ -148,7 +148,7 @@ Run `hermes model`, choose **Custom endpoint**, then enter:
 | Model | `gemini-flash-latest` |
 | API mode, if prompted | `chat_completions` |
 
-Start a fresh Hermes session after saving. This setup follows the [official provider guide](https://hermes-agent.nousresearch.com/docs/integrations/providers/). Shipped Hermes tool schemas and an official OpenAI SDK tool loop passed offline checks; live Hermes/Google acceptance remains pending. Native effort is `low`, `medium` or `high`; Hermes `max` maps explicitly to native `high`, disclosed by `X-Virel-Reasoning-Requested: max` and `X-Virel-Reasoning-Applied: high`. A remote/container client needs a reachable server address instead of its own localhost.
+Start a fresh Hermes session after saving. This setup follows the [official provider guide](https://hermes-agent.nousresearch.com/docs/integrations/providers/). Shipped Hermes tool schemas and an official OpenAI SDK tool loop passed offline checks. A native Hermes desktop0.22.2+1531 text request with35 client tools declared passed with the user on observed Gemini3.8Flash; live multi-round tool execution and heavy tasks remain unverified. Native effort is `low`, `medium` or `high`; Hermes `max` maps explicitly to native `high`, disclosed by `X-Virel-Reasoning-Requested: max` and `X-Virel-Reasoning-Applied: high`. A remote/container client needs a reachable server address instead of its own localhost.
 
 ## Client tools and agents
 
