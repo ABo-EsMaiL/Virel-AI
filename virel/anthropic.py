@@ -63,13 +63,13 @@ def media_part(part):
         return {"type":"image_url","image_url":{"url":uri}}
     return {"type":"file","file":{("file_data" if kind=="base64" else "file_url"):uri}}
 
-def native_history(messages):
+def native_history(messages, *, desktop=False):
     if not isinstance(messages,list) or not messages:
         invalid("A nonempty messages array is required.")
     history = []
     for index, message in enumerate(messages):
         extra = set(message)-{"role","content"} if isinstance(message,dict) else set()
-        role_valid = isinstance(message,dict) and message.get("role") in ("user","assistant")
+        role_valid = isinstance(message,dict) and message.get("role") in (("user","assistant","system") if desktop else ("user","assistant"))
         if not isinstance(message,dict) or extra or not role_valid:
             # Structural names only; never log content, role or unknown-field values.
             fields = sorted(key if isinstance(key,str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}",key)
@@ -127,7 +127,7 @@ def native_history(messages):
         flush()
     return history
 
-def normalize_request(body):
+def normalize_request(body, *, desktop=False):
     if not isinstance(body,dict):
         invalid("Expected a JSON object.")
     bounded(body,MAX_REQUEST_BYTES,"Messages request")
@@ -160,7 +160,7 @@ def normalize_request(body):
     context=body.get("context_management")
     if context is not None and context not in ({},{"edits":[]},{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}):
         invalid("Context edits are unavailable; no thinking transcript is emitted to clear.",True)
-    converted={"model":body["model"],"messages":native_history(body.get("messages")),"stream":False}
+    converted={"model":body["model"],"messages":native_history(body.get("messages"),desktop=desktop),"stream":False}
     if "system" in body:
         converted["messages"].insert(0,{"role":"system","content":text_blocks(body["system"])})
     if "temperature" in body: converted["temperature"]=body["temperature"]
@@ -210,7 +210,7 @@ def native_error(error):
     return {"type":"error","error":{"type":kind,"message":detail["message"]},"request_id":"req_"+uuid.uuid4().hex[:16]}
 
 async def messages_response(body,sem,owner,*,desktop=False):
-    converted,options=normalize_request(body)
+    converted,options=normalize_request(body,desktop=desktop)
     alias = converted["model"] if desktop else None
     if desktop:
         from .models import desktop_aliases
