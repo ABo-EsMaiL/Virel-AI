@@ -2,7 +2,9 @@
 
 RENDER_MARKDOWN = r"""(root) => {
     const ignored = 'button, mat-icon, .material-symbols-outlined, .mat-expansion-panel-header, .code-block-header, ms-citation-chunk, .citation, ms-thought-chunk, .thought-activity-host, ms-function-call-chunk, ms-function-response-chunk, script, style, template';
-    const escape = text => text.replace(/([\\\x60*_[\]<>~])/g, '\\$1');
+    // Underscores inside identifiers are literal Markdown, not emphasis markers.
+    const escape = text => text.replace(/([\\\x60*[\]<>~])/g, '\\$1')
+        .replace(/(?<![\p{L}\p{N}_])_|_(?![\p{L}\p{N}_])/gu, '\\_');
     const join = nodes => Array.from(nodes, render).reduce((out, part) =>
         out.endsWith('\n') && part.startsWith('\n')
             ? out.replace(/\n+$/, '') + '\n\n' + part.replace(/^\n+/, '') : out + part, '');
