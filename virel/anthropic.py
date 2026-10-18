@@ -74,8 +74,10 @@ def native_history(messages):
             # Structural names only; never log content, role or unknown-field values.
             fields = sorted(key if isinstance(key,str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}",key)
                             else "<redacted>" for key in extra)[:16]
-            logger.warning("Messages shape rejected index=%d object=%s role_valid=%s extra_count=%d extra_fields=%s",
-                           index, isinstance(message,dict), role_valid, len(extra), fields)
+            role = message.get("role") if isinstance(message,dict) else None
+            role_kind = role if role in ("user","assistant","system","developer","tool","function","human","ai") else type(role).__name__
+            logger.warning("Messages shape rejected index=%d object=%s role_valid=%s role_kind=%s extra_count=%d extra_fields=%s",
+                           index, isinstance(message,dict), role_valid, role_kind, len(extra), fields)
             invalid("Messages require user/assistant roles and content.")
         role, content = message["role"], message.get("content")
         if isinstance(content,str):
