@@ -293,6 +293,10 @@ One Chromium process/profile hosts independent request pages. Each page has its 
 
 `/health` reports pool counts and opaque page IDs; authenticated diagnostics accept `?page_id=...`. Its model/settings fields describe the control page. Client-tool IDs identify continuations; standard requests do not expose ordinary parent/child ancestry. No history store, tool executor or client changes are required. Keep one server worker per profile. Actual Google parallel capacity and multi-client acceptance remain unverified; extra pages do not increase account quotas.
 
+## Text output limits
+
+Chat Completions, Responses and legacy text requests accept max_tokens, max_completion_tokens or max_output_tokens as a positive integer. Matching aliases are allowed; conflicting values fail before generation. The gateway applies the limit to AI Studio's existing Maximum output tokens control and verifies its native model range and readback. It does not ignore the limit or truncate text locally. Omitted/null limits keep existing behavior. Exact token-limit finish-reason classification is not yet available.
+
 ## OpenCode setup
 
 [examples/opencode.json](examples/opencode.json) configures the native @ai-sdk/openai-compatible provider against http://localhost:8001/v1. Supply the existing gateway key as VIREL_API_KEY in the client environment; the example contains no secret. Put the example in a separate trial project, start OpenCode, and select virel/gemini-flash-latest. Tool actions require approval.

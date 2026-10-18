@@ -394,7 +394,7 @@ class BrowserPage:
         yield {**result, "text": final_text, "delta": final_text}
 
     async def ensure_max_output_tokens(self, value):
-        """Apply the caller's native Messages output cap, with readback before Send."""
+        """Apply the caller's native output cap, with readback before Send."""
         try:
             control = self.page.locator('input[aria-label="Maximum output tokens"]').first
             advanced = self.page.get_by_role("button", name=re.compile("Advanced settings", re.I)).first

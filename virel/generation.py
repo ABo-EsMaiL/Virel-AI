@@ -32,13 +32,22 @@ def validate_options(body):
     for name in ("tools", "tool_choice", "conversation", "previous_response_id", "background", "include"):
         if body.get(name):
             raise GatewayError(400, f"{name} is not supported in this text stage.", "unsupported_capability")
-    for name in ("max_tokens", "max_completion_tokens", "max_output_tokens", "top_p", "response_format"):
+    for name in ("top_p", "response_format"):
         if body.get(name) is not None:
             raise GatewayError(400, f"{name} is not implemented by the browser adapter.", "unsupported_parameter")
     if body.get("n", 1) != 1:
         raise GatewayError(400, "Only one completion is supported.", "unsupported_parameter")
 
     options = {}
+    for name in ("max_tokens", "max_completion_tokens", "max_output_tokens"):
+        maximum = body.get(name)
+        if maximum is None:
+            continue
+        if type(maximum) is not int or not 1 <= maximum <= 2147483647:
+            raise GatewayError(400, f"{name} must be a positive integer.", "invalid_request")
+        if "max_output_tokens" in options and options["max_output_tokens"] != maximum:
+            raise GatewayError(400, "Conflicting output token limits.", "invalid_request")
+        options["max_output_tokens"] = maximum
     effort = body.get("reasoning_effort")
     reasoning = body.get("reasoning")
     if reasoning is not None:
