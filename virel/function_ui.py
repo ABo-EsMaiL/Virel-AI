@@ -58,9 +58,10 @@ def _difference(expected, observed, path="declarations"):
         return path[:512] + ": value changed"
     return None
 
-async def ensure_functions(page, declarations):
+async def ensure_functions(page, declarations, *, preserve_pending=False):
     try:
-        await disable_functions(page)
+        if not preserve_pending:
+            await disable_functions(page)
         if not declarations: return
         for label in ('Grounding with Google Search', 'Browse the url context'):
             control = page.locator(f'button[role="switch"][aria-label="{label}"]').first
@@ -69,9 +70,10 @@ async def ensure_functions(page, declarations):
             if await control.count() and await control.get_attribute('aria-checked') != 'false':
                 raise GatewayError(503, "Incompatible AI Studio tools could not be disabled.", "settings_unavailable")
         switch = page.locator('button[role="switch"][aria-label="Function calling"]').first
-        if not await switch.count() or not await switch.is_enabled():
+        if not await switch.count() or (not preserve_pending and not await switch.is_enabled()):
             raise GatewayError(400, "This AI Studio model does not expose function calling.", "unsupported_capability")
-        await switch.click(timeout=5000)
+        if not preserve_pending:
+            await switch.click(timeout=5000)
         if await switch.get_attribute('aria-checked') != 'true':
             raise GatewayError(503, "AI Studio function mode could not be verified.", "settings_unavailable")
         edit = page.get_by_role('button', name='Edit function declarations', exact=True)

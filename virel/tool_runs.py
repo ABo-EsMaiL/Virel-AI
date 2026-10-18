@@ -54,11 +54,11 @@ class ToolRun:
         if self.pending:
             raise GatewayError(429, "The browser is waiting for this agent's function result. Finish that loop or wait for its idle timeout.", "tool_run_busy")
 
-    def remember(self, history, calls, config, anchor="", response_text="", text="", owner="", tool_schemas=None):
+    def remember(self, history, calls, config, anchor="", response_text="", text="", owner="", tool_schemas=None, visibility=None):
         routing_tools = tuple(name for name, schema in (tool_schemas or {}).items()
                               if "tool" not in schema.get("properties", {}))
         normalized = canonical(history, routing_tools)
-        self.pending = {"prefix": digest(conversation(normalized)), "config": config,
+        self.pending = {"prefix": digest(conversation(normalized)), "config": config, "visibility": visibility,
                         "owner": owner, "routing_tools": routing_tools, "instructions": digest(instructions(normalized)),
                         "text": digest(text), "anchor": anchor, "response_hash": digest(response_text),
                         "deadline": time.monotonic() + self.ttl,

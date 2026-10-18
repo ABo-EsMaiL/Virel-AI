@@ -40,6 +40,50 @@ def text_blocks(value):
         parts.append(part["text"])
     return "\n".join(parts)
 
+def tool_result_blocks(value):
+    if not isinstance(value, list) or not any(isinstance(p, dict) and p.get("type") == "tool_reference" for p in value):
+        return text_blocks(value)
+    for part in value:
+        if isinstance(part, dict) and part.get("type") == "tool_reference":
+            if set(part) != {"type", "tool_name"} or not isinstance(part["tool_name"], str):
+                invalid("Invalid tool_reference block.")
+        else:
+            text_blocks([part])
+    return json.dumps(value, ensure_ascii=False)
+
+
+def loaded_tool_names(body):
+    """Derive visibility from validated, ordered client history, never tool-output prose."""
+    tools = body.get("tools", [])
+    if any(not isinstance(tool.get("name"), str) for tool in tools):
+        invalid("Client tools require text names.")
+    names = {tool["name"] for tool in tools}
+    deferred = {tool.get("name") for tool in tools if tool.get("defer_loading", False)}
+    loaded = names - deferred
+    if deferred and not loaded:
+        invalid("At least one client tool must be non-deferred.")
+    for message in body["messages"]:
+        if not isinstance(message["content"], list):
+            continue
+        for part in message["content"]:
+            if part.get("type") == "tool_use":
+                if not isinstance(part.get("name"), str):
+                    invalid("Historical tool use requires a text name.")
+                if part["name"] in deferred and part["name"] not in loaded:
+                    invalid("Historical tool use precedes discovery of its deferred definition.")
+            if part.get("type") != "tool_result" or not isinstance(part.get("content"), list):
+                continue
+            for reference in part["content"]:
+                if reference.get("type") != "tool_reference":
+                    continue
+                name = reference["tool_name"]
+                if name not in names:
+                    invalid("Tool reference must identify a declared client tool.")
+                if not part.get("is_error", False):
+                    loaded.add(name)
+    return loaded if deferred else None
+
+
 def media_part(part):
     source = part.get("source")
     if not isinstance(source, dict):
@@ -110,7 +154,7 @@ def native_history(messages, *, desktop=False):
                 if set(part)-{"type","tool_use_id","content","is_error","cache_control"} or type(part.get("is_error",False)) is not bool:
                     invalid("Invalid tool_result block.")
                 flush()
-                result = text_blocks(part.get("content",""))
+                result = tool_result_blocks(part.get("content",""))
                 if part.get("is_error"):
                     result = json.dumps({"is_error":True,"content":result},ensure_ascii=False)
                 history.append({"role":"tool","tool_call_id":part.get("tool_use_id"),"content":result})
@@ -170,7 +214,7 @@ def normalize_request(body, *, desktop=False):
     if tools:
         converted["tools"]=[]
         for index, tool in enumerate(tools):
-            extra = set(tool)-{"name","description","input_schema","cache_control","type"} if isinstance(tool,dict) else set()
+            extra = set(tool)-{"name","description","input_schema","cache_control","type","defer_loading"} if isinstance(tool,dict) else set()
             kind = tool.get("type","custom") if isinstance(tool,dict) else None
             if not isinstance(tool,dict) or extra or kind != "custom":
                 fields = sorted(key if isinstance(key,str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}",key)
@@ -182,6 +226,10 @@ def normalize_request(body, *, desktop=False):
                                index, kind_label, len(extra), fields, flags)
                 invalid("Only client-owned custom tools are available.",True)
             cache_hint(tool)
+            if "defer_loading" in tool and type(tool["defer_loading"]) is not bool:
+                invalid("defer_loading must be boolean.")
+            if tool.get("defer_loading") and tool.get("cache_control") is not None:
+                invalid("Deferred tools cannot have cache_control.")
             converted["tools"].append({"type":"function","function":{"name":tool.get("name"),
                 "description":tool.get("description",""),"parameters":tool.get("input_schema")}})
     if "tool_choice" in body:
@@ -230,9 +278,15 @@ async def messages_response(body,sem,owner,*,desktop=False):
         converted["model"] = target
     identifier="msg_"+uuid.uuid4().hex[:24]
     now=int(time.time())
+    logger.info("Messages request %s desktop=%s stream=%s tools=%d deferred=%d max_tokens=%d",
+                identifier, desktop, body.get("stream", False), len(body.get("tools", [])),
+                sum(tool.get("defer_loading", False) for tool in body.get("tools", [])), body["max_tokens"])
     plan=None
     if is_tool_request(converted):
-        plan=prepare_tools(converted,False)
+        visible = loaded_tool_names(body)
+        plan=prepare_tools(converted,False,visible_tools=visible)
+        if visible is not None:
+            plan["deferred_tools"] = sorted(tool["name"] for tool in body["tools"] if tool.get("defer_loading", False))
         plan["materialize_defaults"]=True
         browser_manager.prepare(plan["history"],bool(plan["declarations"]))
     await require_ready()

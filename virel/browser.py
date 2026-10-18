@@ -455,6 +455,10 @@ class BrowserPage:
             model_count = await self.page.locator("ms-chat-turn .model-prompt-container").count()
             state = await self.page.evaluate(FETCH_RESPONSE_STATE, max(0, model_count - 1))
             await verify_continuation(self.page, continuation, state)
+            if continuation.get("refresh_functions"):
+                await ensure_functions(self.page, function_settings, preserve_pending=True)
+                state = await self.page.evaluate(FETCH_RESPONSE_STATE, max(0, model_count - 1))
+                await verify_continuation(self.page, continuation, state)
         else:
             self.tool_run.require_idle()
             if not await self.reset_chat_if_needed(model_name=model_name, output_kind=output_kind):
