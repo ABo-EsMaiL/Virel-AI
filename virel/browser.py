@@ -54,6 +54,7 @@ class BrowserPage:
         self.tool_run = ToolRun(TOOL_RUN_TTL_SECONDS)
         self.last_batch_turn = ""
         self.last_usage = None
+        self.last_finish_reason = None
         self.last_timings = {}
         self.comparison_skipped = False
         self.usage_observer = BrowserUsageObserver()
@@ -364,6 +365,7 @@ class BrowserPage:
     async def send_prompt_and_stream(self, prompt, model_name=None, batch_size=None, enable_search=None, images=None, request_id=None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto", image_settings=None, function_settings=None, continuation=None, max_output_tokens=None):
         attempt_id = request_id or uuid.uuid4().hex
         self.last_usage = None
+        self.last_finish_reason = None
         self.comparison_skipped = False
         self.last_batch_turn = ""
         self.usage_observer.begin(attempt_id, prompt)
@@ -391,7 +393,8 @@ class BrowserPage:
                 logger.debug("Generation error watcher cleanup failed.")
             usage = await self.usage_observer.finish(attempt_id)
             self.last_usage = None if self.comparison_skipped else usage
-        yield {**result, "text": final_text, "delta": final_text}
+            self.last_finish_reason = None if self.comparison_skipped else self.usage_observer.last_finish_reason
+        yield {**result, "text": final_text, "delta": final_text, "finish_reason": self.last_finish_reason}
 
     async def ensure_max_output_tokens(self, value):
         """Apply the caller's native output cap, with readback before Send."""
@@ -766,9 +769,9 @@ class BrowserPage:
                         # CHECK 1 TRANSITION:
                         # Button transitioned away from Stop state.
                         # Wait stability_duration to allow final DOM flush.
-                        # Only settle if we already have text OR if elapsed is > 5.0s.
+                        # An observed output-limit terminal also permits an empty completion.
                         # ------------------------------------------------------------------
-                        if len(current_text) == 0 and not image_ready and not function_calls and elapsed < 5.0:
+                        if len(current_text) == 0 and not image_ready and not function_calls and elapsed < 5.0 and self.usage_observer.last_finish_reason != "max_tokens":
                             stability_start_time = None
                         else:
                             if stability_start_time is None:
@@ -779,7 +782,7 @@ class BrowserPage:
                                     f"[{case_count} cases] State -> RESPONSE_COMPLETED via trigger "
                                     f"(Button: '{button_text}', is_run_disabled={is_run_disabled}; stable for {t_cfg['stability_duration']:.1f}s at {len(current_text)} chars)"
                                 )
-                                yield {"delta": "", "text": current_text}
+                                yield {"delta": "", "text": current_text, "finish_reason": self.usage_observer.last_finish_reason}
                                 break
 
                     # Always yield the current state so non-streaming callers can access text
@@ -803,7 +806,7 @@ class BrowserPage:
                 yield {"delta": "", "text": prev_text, "image": output['data']}
             elif function_settings is not None and function_calls:
                 yield {"delta": "", "text": prev_text, "function_calls": function_calls}
-            elif not trimmed_text:
+            elif not trimmed_text and self.usage_observer.last_finish_reason != "max_tokens":
                 validation_error = "EMPTY_RESPONSE: Model finished generating but no text was captured from DOM."
 
         if validation_error:
@@ -904,6 +907,7 @@ class BrowserPage:
         from .speech import generate_in_speech_page
         self.tool_run.require_idle()
         self.last_usage = None
+        self.last_finish_reason = None
         self.last_timings = {}
         self.usage_observer.begin(request_id, text)
         try:

@@ -36,15 +36,16 @@ def read_text(item, previous):
 
 def text_payload(responses, identifier, now, model, text):
     usage = browser_manager.last_usage
+    limited = getattr(browser_manager, "last_finish_reason", None) == "max_tokens"
     message = {"role": "assistant", "content": text}
     common = {"id": identifier, "model": response_model(model), "requested_model": model}
     if not responses:
         return {**common, "object": "chat.completion", "created": now,
-                "choices": [{"index": 0, "message": message, "finish_reason": "stop"}],
+                "choices": [{"index": 0, "message": message, "finish_reason": "length" if limited else "stop"}],
                 "usage": usage.chat() if usage else None}
-    return {**common, "object": "response", "created_at": now, "status": "completed", "store": False,
-            "error": None, "incomplete_details": None,
-            "output": [{"type": "message", "id": "msg_" + uuid.uuid4().hex[:16], "role": "assistant", "status": "completed", "phase": "final_answer",
+    return {**common, "object": "response", "created_at": now, "status": "incomplete" if limited else "completed", "store": False,
+            "error": None, "incomplete_details": {"reason":"max_output_tokens"} if limited else None,
+            "output": [{"type": "message", "id": "msg_" + uuid.uuid4().hex[:16], "role": "assistant", "status": "incomplete" if limited else "completed", "phase": "final_answer",
                         "content": [{"type": "output_text", "text": text, "annotations": []}]}],
             "output_text": text, "usage": usage.responses() if usage else None}
 
@@ -135,7 +136,7 @@ def stream_response(source, responses, identifier, now, model, include_usage=Fal
                         yield event("response.function_call_arguments.delta", item_id=output["id"], output_index=index, delta=output["arguments"])
                         yield event("response.function_call_arguments.done", item_id=output["id"], output_index=index, arguments=output["arguments"])
                     yield event("response.output_item.done", output_index=index, item=output)
-                yield event("response.completed", response=final)
+                yield event("response.incomplete" if final.get("status") == "incomplete" else "response.completed", response=final)
             else:
                 choice = final["choices"][0]
                 for index, call in enumerate(choice["message"].get("tool_calls", [])):

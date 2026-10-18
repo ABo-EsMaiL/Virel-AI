@@ -89,12 +89,14 @@ async def responses_endpoint(request: Request):
                     else:
                         full_text += chunk_data
 
+                limited = browser_manager.last_finish_reason == "max_tokens"
                 response_payload = {
                     "id": resp_id,
                     "object": "response",
                     "created_at": now,
-                    "status": "completed",
+                    "status": "incomplete" if limited else "completed",
                     "store": False,
+                    "incomplete_details": {"reason":"max_output_tokens"} if limited else None,
                     "model": response_model(model_name),
                     "requested_model": model_name,
                     "output": [
@@ -103,7 +105,7 @@ async def responses_endpoint(request: Request):
                             "id": f"msg_{uuid.uuid4().hex[:16]}",
                             "role": "assistant",
                             "phase": "final_answer",
-                            "status": "completed",
+                            "status": "incomplete" if limited else "completed",
                             "content": [
                                 {
                                     "type": "output_text",
@@ -121,7 +123,7 @@ async def responses_endpoint(request: Request):
                                 "role": "assistant",
                                 "content": full_text
                             },
-                            "finish_reason": "stop"
+                            "finish_reason": "length" if limited else "stop"
                         }
                     ],
                     "usage": browser_manager.last_usage.responses() if browser_manager.last_usage else None

@@ -96,6 +96,6 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
                             "role": "assistant",
                             "content": full_text
                         },
-                        "finish_reason": "stop"
+                        "finish_reason": "length" if browser_manager.last_finish_reason == "max_tokens" else "stop"
                     }]
                 }, headers=headers)

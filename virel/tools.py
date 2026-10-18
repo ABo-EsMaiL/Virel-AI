@@ -363,7 +363,7 @@ async def _function_events(plan, options, sem, owner, identifier, now, model, re
                     if set(native_envelope) != {"calls"} or not native_envelope["calls"]:
                         fail("AI Studio returned an invalid native client-tool batch.", True)
                 calls = validate_calls(unpack_calls(native_envelope["calls"]) if native_envelope else [], plan)
-                if not calls and not text.strip():
+                if not calls and not text.strip() and browser_manager.last_finish_reason != "max_tokens":
                     fail("AI Studio returned no final text or native client-tool calls.", True)
                 if calls:
                     browser_manager.tool_run.remember(plan["history"], calls, identity,
@@ -377,19 +377,20 @@ async def _function_events(plan, options, sem, owner, identifier, now, model, re
             headers = usage_headers(identifier)
             headers.update({"X-Virel-Tool-Execution": "client", "X-Virel-Tool-Transport": "native_function_batch", "X-Google-Search-Enabled": str(browser_manager.google_search_enabled and browser_manager.search_verified).lower(),
                             "X-Tool-Calls-Count": str(len(calls))})
+            limited = browser_manager.last_finish_reason == "max_tokens" and not calls
             if responses:
                 output = [{"type": "function_call", "id": "fc_" + uuid.uuid4().hex[:16], "call_id": c["id"],
                            **c["function"], **plan["bindings"].get(c["function"]["name"], {}), "status": "completed"} for c in calls]
                 if text:
-                    output.insert(0, {"type": "message", "id": "msg_" + uuid.uuid4().hex[:16], "role": "assistant", "status": "completed",
+                    output.insert(0, {"type": "message", "id": "msg_" + uuid.uuid4().hex[:16], "role": "assistant", "status": "incomplete" if limited else "completed",
                                       "phase": "commentary" if calls else "final_answer",
                                       "content": [{"type": "output_text", "text": text, "annotations": []}]})
-                payload = {"id": identifier, "object": "response", "created_at": now, "status": "completed", "error": None,
-                           "incomplete_details": None, "store": False, "model": response_model(model), "requested_model": model, "output": output, "output_text": text,
+                payload = {"id": identifier, "object": "response", "created_at": now, "status": "incomplete" if limited else "completed", "error": None,
+                           "incomplete_details": {"reason":"max_output_tokens"} if limited else None, "store": False, "model": response_model(model), "requested_model": model, "output": output, "output_text": text,
                            "usage": browser_manager.last_usage.responses() if browser_manager.last_usage else None}
             else:
                 payload = {"id": identifier, "object": "chat.completion", "created": now, "model": response_model(model), "requested_model": model,
-                           "choices": [{"index": 0, "message": message, "finish_reason": "tool_calls" if calls else "stop"}],
+                           "choices": [{"index": 0, "message": message, "finish_reason": "tool_calls" if calls else ("length" if limited else "stop")}],
                            "usage": browser_manager.last_usage.chat() if browser_manager.last_usage else None}
             try:
                 yield {"response": payload, "headers": headers, "pending": browser_manager.tool_run.pending}

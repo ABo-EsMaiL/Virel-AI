@@ -77,11 +77,41 @@ def parse_usage(text):
     return latest
 
 
+def parse_finish_reason(text):
+    """Read only an observed MAX_TOKENS candidate (proto field2, enum2)."""
+    if not isinstance(text, str) or len(text) > 2 * 1024 * 1024:
+        return None
+    try:
+        packet = json.loads(text)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(packet, list) or len(packet) != 1 or not isinstance(packet[0], list):
+        return None
+    latest = None
+    for frame in packet[0]:
+        if not isinstance(frame, list) or len(frame) < 3 or not isinstance(frame[0], list) or not frame[0]:
+            continue
+        candidates = frame[0]
+        if any(not isinstance(c, list) or len(c) < 2 or
+               not (c[0] in (None, []) or isinstance(c[0], list) and len(c[0]) > 1 and c[0][1] == "model")
+               for c in candidates):
+            return None
+        reasons = [c[1] for c in candidates]
+        if any(type(reason) is not int for reason in reasons):
+            return None
+        if any(reason <= 0 for reason in reasons):
+            latest = None
+            continue
+        latest = "max_tokens" if all(reason == 2 for reason in reasons) else None
+    return latest
+
+
 class BrowserUsageObserver:
     def __init__(self):
         self.active_id = None
         self.prompt = ""
         self.last_usage = None
+        self.last_finish_reason = None
         self.requests = {}
         self.pending = {}
 
@@ -89,6 +119,7 @@ class BrowserUsageObserver:
         self.active_id = attempt_id
         self.prompt = prompt
         self.last_usage = None
+        self.last_finish_reason = None
         self.requests.clear()
 
     def on_request(self, request):
@@ -112,9 +143,12 @@ class BrowserUsageObserver:
 
     async def _read(self, response, attempt_id):
         try:
-            usage = parse_usage(await response.text())
-            if attempt_id == self.active_id and usage is not None:
-                self.last_usage = usage
+            text = await response.text()
+            usage = parse_usage(text)
+            if attempt_id == self.active_id:
+                self.last_finish_reason = parse_finish_reason(text)
+                if usage is not None:
+                    self.last_usage = usage
         except Exception:
             # Metadata is optional; failures must not reuse previous request counts.
             pass

@@ -136,7 +136,7 @@ An experimental Anthropic Messages subset is available at POST `/v1/messages`. N
 
 Set `ANTHROPIC_BASE_URL=http://localhost:8001` (without /v1), `ANTHROPIC_API_KEY` to your gateway key and `--model gemini-flash-latest`. Keep these in an isolated client environment; model identity remains Gemini. The server executes no client tools. Declared tool defaults are materialized before call IDs/hashes are bound, preserving strict continuation validation.
 
-Required `max_tokens` is applied and verified in the model's native UI range. Adaptive thinking maps to native low/medium/high effort without exposing Claude thinking signatures. Cache hints are accepted as advisory only; no cache is created or counted. Unknown usage remains null. Streaming uses the same paced completed-browser display as other protocols. Stop reasons identify browser completion or tool use; exact provider token-limit finish classification is not yet available.
+Required `max_tokens` is applied and verified in the model's native UI range. Adaptive thinking maps to native low/medium/high effort without exposing Claude thinking signatures. Cache hints are accepted as advisory only; no cache is created or counted. Unknown usage remains null. Streaming uses the same paced completed-browser display as other protocols. Stop reasons identify browser completion, tool use, or an observed native MAX_TOKENS terminal. Other provider stop reasons are not inferred.
 
 Exact pre-generation token counting returns501. Signed thinking, thinking budgets, hosted tools, structured outputs, stop sequences, context compaction and media-bearing tool histories are unsupported. Ordinary image/document requests reuse existing media validation. The native CLI may retry an initially failed stream once as JSON; the gateway itself does not retry or replay tools. See the [official gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol).
 
@@ -297,7 +297,7 @@ One Chromium process/profile hosts independent request pages. Each page has its 
 
 ## Text output limits
 
-Chat Completions, Responses and legacy text requests accept max_tokens, max_completion_tokens or max_output_tokens as a positive integer. Matching aliases are allowed; conflicting values fail before generation. The gateway applies the limit to AI Studio's existing Maximum output tokens control and verifies its native model range and readback. It does not ignore the limit or truncate text locally. Omitted/null limits keep existing behavior. Exact token-limit finish-reason classification is not yet available.
+Chat Completions, Responses and legacy text requests accept max_tokens, max_completion_tokens or max_output_tokens as a positive integer. Matching aliases are allowed; conflicting values fail before generation. The gateway applies the limit to AI Studio's existing Maximum output tokens control and verifies its native model range and readback. It does not ignore the limit or truncate text locally. Omitted/null limits keep existing behavior. A correlated native MAX_TOKENS terminal is reported as length (Chat/legacy), incomplete with max_output_tokens (Responses), or max_tokens (Messages). This may legitimately contain no visible text, including a one-token connection probe consumed by thinking. Unknown empty responses remain errors; the gateway never inflates the requested cap or fabricates probe success.
 
 ## OpenCode setup
 

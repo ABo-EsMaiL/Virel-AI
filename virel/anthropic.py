@@ -187,7 +187,7 @@ def native_payload(payload,identifier):
         content.append({"type":"tool_use","id":call["id"],"name":call["function"]["name"],"input":json.loads(call["function"]["arguments"])})
     usage=payload.get("usage")
     return {"id":identifier,"type":"message","role":"assistant","model":payload["model"],"content":content,
-            "stop_reason":"tool_use" if message.get("tool_calls") else "end_turn","stop_sequence":None,
+            "stop_reason":"tool_use" if message.get("tool_calls") else ("max_tokens" if payload["choices"][0]["finish_reason"] == "length" else "end_turn"),"stop_sequence":None,
             "usage":{"input_tokens":usage["prompt_tokens"] if usage else None,
                      "output_tokens":usage["completion_tokens"] if usage else None}}
 
