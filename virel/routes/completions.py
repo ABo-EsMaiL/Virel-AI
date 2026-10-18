@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from ..auth import verify_api_key
 from ..errors import GatewayError
-from ..generation import checked_stream, require_ready, validate_options, usage_headers, response_model
+from ..generation import checked_stream, require_ready, validate_options, usage_headers, response_model, reasoning_headers
 from ..config import DEFAULT_MODEL, RATE_LIMIT
 from ..runtime import browser_manager, limiter, _get_semaphore
 
@@ -54,4 +54,4 @@ async def legacy_completions(request: Request):
                     "logprobs": None,
                     "finish_reason": "stop"
                 }]
-            }, headers=usage_headers(chunk_id))
+            }, headers={**usage_headers(chunk_id), **reasoning_headers(body)})

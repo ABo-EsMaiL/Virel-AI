@@ -8,7 +8,7 @@ import uuid
 from fastapi.responses import JSONResponse, StreamingResponse
 from .config import MAX_REQUEST_BYTES
 from .errors import GatewayError, provider_error
-from .generation import validate_options, require_ready
+from .generation import validate_options, require_ready, reasoning_headers
 from .messages import extract_prompt_and_images
 from .schemas import ChatMessage
 from .runtime import browser_manager
@@ -213,7 +213,7 @@ async def messages_response(body,sem,owner):
         prompt,images=extract_prompt_and_images([ChatMessage(**m) for m in converted["messages"]])
         if not prompt.strip() and not images: invalid("A nonempty prompt is required.")
         source=text_events(prompt,identifier,now,converted["model"],False,sem,images=images,**options)
-    headers={"X-Virel-Prompt-Cache":"unavailable","X-Virel-Thinking-Transcript":"unavailable",
+    headers={**reasoning_headers(converted), "X-Virel-Prompt-Cache":"unavailable","X-Virel-Thinking-Transcript":"unavailable",
              "X-Virel-Model-Provider":"google-ai-studio","X-Virel-Stop-Reason":"browser-completion-or-tool-use"}
     async def completed():
         final=None
