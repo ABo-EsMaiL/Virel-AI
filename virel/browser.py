@@ -928,6 +928,10 @@ class WebHookBrowserManager(BrowserPage):
     async def start(self):
         self.is_shutting_down = False
         self.is_ready = False
+        # A restarted context must never advertise its previous UI observation.
+        self.model_catalog = {}
+        self.model_catalog_observed = False
+        self.catalog_observed_at = 0
         logger.info(f"Launching persistent Chromium context from: {CHROME_PROFILE_DIR} (headless={HEADLESS}, start-maximized)")
         self.playwright = await async_playwright().start()
 

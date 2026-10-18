@@ -15,7 +15,7 @@ from .tool_runs import digest
 
 logger = logging.getLogger("virel.webhook")
 MB = 1024 * 1024
-GENERATING = {"/v1/messages", "/v1/chat/completions", "/v1/responses", "/responses", "/v1/completions",
+GENERATING = {"/v1/messages", "/claude/v1/messages", "/v1/chat/completions", "/v1/responses", "/responses", "/v1/completions",
               "/v1/images/generations", "/v1/images/edits", "/v1/audio/transcriptions",
               "/v1/audio/translations", "/v1/audio/speech"}
 
@@ -314,7 +314,7 @@ class BrowserRequestMiddleware:
             return await self.app(scope, receive, send)
         headers = dict(scope.get("headers", []))
         owner = headers.get(b"authorization", b"")
-        if path == "/v1/messages" and not owner:
+        if path in ("/v1/messages", "/claude/v1/messages") and not owner:
             owner = b"Bearer " + headers.get(b"x-api-key", b"")
         request = self.pool.new_scope(owner.decode("latin1"), path in GENERATING)
         started = finished = False

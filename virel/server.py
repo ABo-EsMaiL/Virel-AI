@@ -112,3 +112,4 @@ app.add_middleware(BrowserRequestMiddleware, pool=browser_manager)
 
 for route_module in (chat, responses, completions, system, files, audio, image_generation, anthropic):
     app.include_router(route_module.router)
+app.include_router(anthropic.desktop_router)

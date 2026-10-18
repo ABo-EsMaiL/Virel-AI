@@ -65,3 +65,18 @@ def selected_id(label, catalog):
         return None
     item = catalog[identifier]
     return item.get('resolved_id', item['id'])
+
+
+def desktop_aliases(catalog):
+    """User-authorized Desktop routing names; native UI IDs stay authoritative."""
+    from .errors import GatewayError
+    aliases = {}
+    for identifier, item in catalog.items():
+        if item["status"] != "selectable":
+            continue
+        alias = identifier.replace("gemini", "claude") if "gemini" in identifier else (
+            identifier if identifier.startswith("claude-") else "claude-" + identifier)
+        if alias in aliases:
+            raise GatewayError(503, "Observed models have conflicting Desktop aliases.", "model_alias_conflict")
+        aliases[alias] = identifier
+    return aliases

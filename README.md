@@ -308,3 +308,11 @@ This is an initial setup example, not certified OpenCode compatibility. Native c
 ## VS Code clients
 
 [Native Cline and Continue setup](examples/vscode-clients.md) includes the local gateway fields, a secret-free Continue YAML model block, and independent text/file acceptance steps. Setup is prepared for Cline 4.1.24 and Continue 2.0.0; live client acceptance remains pending. Existing gateway contracts are unchanged.
+
+## Claude Desktop alias gateway
+
+For the user-authorized Claude Desktop compatibility trial, set its Gateway base URL to http://localhost:8001/claude, use the existing gateway key and Bearer authentication. Its /v1/models view derives one routing alias per currently selectable AI Studio card: for example, claude-3.8-flash routes to the real gemini-3.8-flash. These are **Gemini routing aliases, not Anthropic Claude models or equivalent capabilities**. Original /v1 endpoints, Gemini IDs and all existing clients remain unchanged.
+
+Alias discovery is dynamic, not a list of ten hardcoded names. Every browser startup/recovery discards its previous catalog and observes the current model picker; Paid/disabled/unsupported rows stay excluded. Cached model reads do not run inference; ?refresh=true explicitly rescans an idle control page. Selectable/free indicates the observed UI state, not remaining quota.
+
+The alias route retains existing Messages validation, settings, JSON/SSE, usage and client-owned tool continuations. Catalog metadata and completed messages disclose the real model; headers disclose the alias/requested UI ID, with verified actual-model metadata in the completed stream event (and a header for JSON). Listed image/speech models retain their existing output-adapter restrictions; listing does not add media generation to Messages. Native Desktop discovery and inference acceptance remain user-owned and unverified.

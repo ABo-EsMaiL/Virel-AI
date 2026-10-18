@@ -197,8 +197,16 @@ def native_error(error):
           429:"rate_limit_error",529:"overloaded_error"}.get(error.status_code,"api_error" if error.status_code>=500 else "invalid_request_error")
     return {"type":"error","error":{"type":kind,"message":detail["message"]},"request_id":"req_"+uuid.uuid4().hex[:16]}
 
-async def messages_response(body,sem,owner):
+async def messages_response(body,sem,owner,*,desktop=False):
     converted,options=normalize_request(body)
+    alias = converted["model"] if desktop else None
+    if desktop:
+        from .models import desktop_aliases
+        await require_ready()
+        target = desktop_aliases(browser_manager.model_catalog).get(alias)
+        if target is None:
+            raise GatewayError(404,"Requested Desktop alias was not observed as available.","model_not_found")
+        converted["model"] = target
     identifier="msg_"+uuid.uuid4().hex[:24]
     now=int(time.time())
     plan=None
@@ -215,15 +223,24 @@ async def messages_response(body,sem,owner):
         source=text_events(prompt,identifier,now,converted["model"],False,sem,images=images,**options)
     headers={**reasoning_headers(converted), "X-Virel-Prompt-Cache":"unavailable","X-Virel-Thinking-Transcript":"unavailable",
              "X-Virel-Model-Provider":"google-ai-studio","X-Virel-Stop-Reason":"browser-completion-or-tool-use"}
+    if alias:
+        headers.update({"X-Virel-Model-Alias":alias,"X-Virel-Requested-UI-Model":converted["model"]})
     async def completed():
         final=None
         async with aclosing(source):
             async for item in source:
                 if "response" in item: final=item
         if final is None: raise GatewayError(502,"Generation ended without a completed message.","incomplete_upstream_stream")
-        return native_payload(final["response"],identifier),final
+        payload = native_payload(final["response"],identifier)
+        if alias:
+            payload["virel"] = {"compatibility_alias":True,"requested_ui_model":converted["model"],
+                                "actual_model":payload["model"],"actual_provider":"google-ai-studio"}
+            payload["model"] = alias
+        return payload,final
     if not body.get("stream",False):
         payload,final=await completed()
+        if alias:
+            headers["X-Virel-Actual-Model"] = payload["virel"]["actual_model"]
         return JSONResponse(payload,headers={**final.get("headers",{}),**headers})
     async def serialize():
         pending=None
