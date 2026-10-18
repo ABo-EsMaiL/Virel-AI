@@ -2,6 +2,7 @@
 import asyncio
 from contextlib import aclosing
 import json
+import logging
 import re
 import time
 import uuid
@@ -14,6 +15,8 @@ from .schemas import ChatMessage
 from .runtime import browser_manager
 from .streaming import text_events
 from .tools import bounded, is_tool_request, prepare_tools, _function_events
+
+logger = logging.getLogger("virel.webhook")
 
 def invalid(message, unsupported=False):
     raise GatewayError(400, message, "unsupported_capability" if unsupported else "invalid_request")
@@ -64,8 +67,15 @@ def native_history(messages):
     if not isinstance(messages,list) or not messages:
         invalid("A nonempty messages array is required.")
     history = []
-    for message in messages:
-        if not isinstance(message,dict) or set(message)-{"role","content"} or message.get("role") not in ("user","assistant"):
+    for index, message in enumerate(messages):
+        extra = set(message)-{"role","content"} if isinstance(message,dict) else set()
+        role_valid = isinstance(message,dict) and message.get("role") in ("user","assistant")
+        if not isinstance(message,dict) or extra or not role_valid:
+            # Structural names only; never log content, role or unknown-field values.
+            fields = sorted(key if isinstance(key,str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}",key)
+                            else "<redacted>" for key in extra)[:16]
+            logger.warning("Messages shape rejected index=%d object=%s role_valid=%s extra_count=%d extra_fields=%s",
+                           index, isinstance(message,dict), role_valid, len(extra), fields)
             invalid("Messages require user/assistant roles and content.")
         role, content = message["role"], message.get("content")
         if isinstance(content,str):
