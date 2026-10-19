@@ -10,8 +10,8 @@ from contextlib import aclosing
 from typing import AsyncGenerator, List, Optional, Union
 from playwright.async_api import async_playwright, BrowserContext, Page, Error as PlaywrightError
 
-from .config import (RUNTIME_DIR, CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, ENABLE_SEARCH_GROUNDING, ENABLE_URL_CONTEXT, TARGET_URL, TOOL_RUN_TTL_SECONDS)
-from .dom import FETCH_RESPONSE_STATE, START_ERROR_WATCH, STOP_ERROR_WATCH
+from .config import (RUNTIME_DIR, CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, ENABLE_SEARCH_GROUNDING, ENABLE_URL_CONTEXT, TARGET_URL, TOOL_RUN_TTL_SECONDS, PRESERVE_MARKDOWN)
+from .dom import response_state_script, START_ERROR_WATCH, STOP_ERROR_WATCH
 from .function_ui import disable_functions, ensure_functions
 from .tool_batch import disable_structured, verify_continuation, prepare_result
 from .tool_runs import ToolRun
@@ -19,6 +19,8 @@ from .usage import BrowserUsageObserver
 from .models import MODEL_SELECTOR, MODEL_ROWS, READ_MODEL_ROWS, catalog_from_rows, selected_id, selected_card_id, IMAGE_MODEL_ICONS
 from .errors import GatewayError
 from .image_output import ensure_image_settings, read_image_output
+
+FETCH_RESPONSE_STATE = response_state_script(PRESERVE_MARKDOWN)
 
 logger = logging.getLogger("virel.webhook")
 
@@ -392,7 +394,7 @@ class BrowserPage:
         yield {**result, "text": final_text, "delta": final_text}
 
     async def ensure_max_output_tokens(self, value):
-        """Apply the caller's native Messages output cap, with readback before Send."""
+        """Apply the caller's native output cap, with readback before Send."""
         try:
             control = self.page.locator('input[aria-label="Maximum output tokens"]').first
             advanced = self.page.get_by_role("button", name=re.compile("Advanced settings", re.I)).first

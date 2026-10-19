@@ -1,0 +1,28 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "virel/gemini-flash-latest",
+  "small_model": "virel/gemini-flash-latest",
+  "enabled_providers": [
+    "virel"
+  ],
+  "share": "disabled",
+  "autoupdate": false,
+  "permission": {
+    "*": "ask"
+  },
+  "provider": {
+    "virel": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Virel AI",
+      "options": {
+        "baseURL": "http://localhost:8001/v1",
+        "apiKey": "{env:VIREL_API_KEY}"
+      },
+      "models": {
+        "gemini-flash-latest": {
+          "name": "Gemini Flash Latest via Virel"
+        }
+      }
+    }
+  }
+}

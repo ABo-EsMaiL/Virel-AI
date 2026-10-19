@@ -155,14 +155,14 @@ def project_schema(schema):
         if "enum" in node and kind=="string":
             native["enum"]=[value for value in node["enum"] if isinstance(value,str)]
         if "const" in node and kind=="string": native["enum"]=[node["const"]]
-        if "properties" in node:
-            if kind!="object" or not isinstance(node["properties"],dict): fail("Invalid schema properties.")
+        # JSON Schema applicators affect only their matching instance type.
+        if "properties" in node and kind=="object":
+            if not isinstance(node["properties"],dict): fail("Invalid schema properties.")
             children={key:compile(value,depth+1,refs) for key,value in node["properties"].items()}
             native["properties"]={key:value.native for key,value in children.items()}
         # The editor removes empty properties, then rejects even an empty required list.
-        if node.get("required"): native["required"]=node["required"]
-        if "items" in node:
-            if kind!="array": fail("Schema items require an array.")
+        if kind=="object" and node.get("required"): native["required"]=node["required"]
+        if "items" in node and kind=="array":
             items=compile(node["items"],depth+1,refs)
             # AI Studio drops item descriptions on Save; keep their guidance on the array.
             item_description=items.native.pop("description",None)
