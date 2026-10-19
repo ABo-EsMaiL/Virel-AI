@@ -78,6 +78,8 @@ class Projection:
     children: dict=field(default_factory=dict)
     items: object=None
     variants: list=field(default_factory=list)
+    additional: object=None
+    entry_key: object=None
 
     @property
     def object_root(self):
@@ -96,6 +98,21 @@ class Projection:
             if value is not True: fail("Native null variant must be true.",True)
             return None
         if isinstance(value,dict):
+            if self.entry_key is not None:
+                if set(value)-set(self.children)-{self.entry_key}:
+                    fail("Native typed maps require their declared map entries transport.",True)
+                result={key:self.children[key].decode(item) for key,item in value.items() if key in self.children}
+                entries=value.get(self.entry_key,[])
+                if not isinstance(entries,list):
+                    fail("Native typed map entries must be an array.",True)
+                for entry in entries:
+                    if not isinstance(entry,dict) or set(entry)!={"key","value"} or not isinstance(entry["key"],str):
+                        fail("Native map entries require a string key and typed value.",True)
+                    key=entry["key"]
+                    if key in result or key in self.children:
+                        fail("Native map entries must not duplicate another property.",True)
+                    result[key]=self.additional.decode(entry["value"])
+                return result
             return {key:self.children[key].decode(item) if key in self.children else item for key,item in value.items()}
         if isinstance(value,list) and self.items:
             return [self.items.decode(item) for item in value]
@@ -179,9 +196,29 @@ def project_schema(schema):
             native["items"]=items.native
         elif kind=="array": fail("Array schemas require typed items.")
         additional=node.get("additionalProperties",True)
-        if not isinstance(additional,bool) and additional!={}:
-            fail("Only boolean or empty-schema additionalProperties is supported.")
-        return Projection(native,kind,children,items)
+        if not isinstance(additional,(bool,dict)):
+            fail("additionalProperties must be boolean or a schema object.")
+        value_projection=None; entry_key=None
+        if kind=="object" and isinstance(additional,dict) and additional:
+            value_projection=compile(additional,depth+1,refs)
+            if value_projection.kind=="null":
+                value_projection=Projection({"type":"boolean","description":"Set true to select JSON null."},"null_signal")
+            entry_key="virel_map_entries"
+            index=0
+            while entry_key in children:
+                index+=1
+                entry_key="virel_map_entries_"+str(index)
+            native.setdefault("properties",{})[entry_key]={
+                "type":"array","description":"Additional properties transport: map entries with unique string keys and typed values. Do not include separately declared properties here.",
+                "items":{"type":"object","properties":{"key":{"type":"string"},"value":value_projection.native},
+                         "required":["key","value"]}}
+            required=node.get("required",[])
+            projected_required=[key for key in required if key in children]
+            if any(key not in children for key in required):
+                projected_required.append(entry_key)
+            if projected_required:native["required"]=projected_required
+            else:native.pop("required",None)
+        return Projection(native,kind,children,items,additional=value_projection,entry_key=entry_key)
     # Inspect unused definition bodies too: no hidden network refs or unsafe regex.
     inspection_budget=[4096]
     def inspect(node,depth=0,refs=()):
@@ -205,6 +242,9 @@ def project_schema(schema):
         # Key constraints stay in the original validator; the native editor has no equivalent field.
         if "propertyNames" in node and type(node["propertyNames"]) is not bool:
             inspect(node["propertyNames"],depth+1,refs)
+        additional=node.get("additionalProperties")
+        if isinstance(additional,dict) and additional:
+            inspect(additional,depth+1,refs)
         if "items" in node: inspect(node["items"],depth+1,refs)
         for key in ("anyOf","oneOf"):
             if key in node:
