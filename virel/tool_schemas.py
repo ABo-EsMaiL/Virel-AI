@@ -8,7 +8,7 @@ KEYS={"type","properties","required","items","description","enum","additionalPro
       "minimum","maximum","exclusiveMinimum","exclusiveMaximum","minLength","maxLength",
       "minItems","maxItems","minProperties","maxProperties","$schema","title","default",
       "anyOf","oneOf","const","$defs","definitions","$ref","examples","example","$comment",
-      "deprecated","readOnly","writeOnly","pattern"}
+      "deprecated","readOnly","writeOnly","pattern","propertyNames"}
 TYPES={"object","array","string","number","integer","boolean","null"}
 logger = logging.getLogger("virel.webhook")
 DIAGNOSTIC_KEYWORDS = {"format", "allOf", "not", "if", "then", "else", "uniqueItems", "multipleOf",
@@ -202,6 +202,9 @@ def project_schema(schema):
             if key in node:
                 if not isinstance(node[key],dict): fail("Invalid schema map.")
                 for child in node[key].values(): inspect(child,depth+1,refs)
+        # Key constraints stay in the original validator; the native editor has no equivalent field.
+        if "propertyNames" in node and type(node["propertyNames"]) is not bool:
+            inspect(node["propertyNames"],depth+1,refs)
         if "items" in node: inspect(node["items"],depth+1,refs)
         for key in ("anyOf","oneOf"):
             if key in node:
