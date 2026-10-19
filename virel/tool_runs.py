@@ -37,6 +37,15 @@ def conversation(history):
 def instructions(history):
     return [turn for turn in history if turn.get("role") in ("system", "developer")]
 
+def result_context(history):
+    """Separate authenticated user context appended after a client's tool results."""
+    end = len(history or [])
+    while end and history[end-1].get("role") == "user" and not history[end-1].get("tool_calls"):
+        end -= 1
+    if end and history[end-1].get("role") == "tool":
+        return history[:end], history[end:]
+    return history or [], []
+
 
 class ToolRun:
     def __init__(self, ttl):
@@ -69,6 +78,7 @@ class ToolRun:
 
     def resolve(self, history, config, owner=""):
         self.expire()
+        history, context = result_context(history)
         if not history or history[-1].get("role") != "tool":
             if self.pending and owner == self.pending["owner"]:
                 self.clear()
@@ -104,6 +114,8 @@ class ToolRun:
             raise GatewayError(409, "Function IDs, previous history, caller or settings do not match the pending round.", "tool_continuation_conflict")
         reply = {"results": [{"call_id": c["id"], "name": c["name"], "output": results[c["id"]]} for c in self.pending["calls"]],
                  "anchor": self.pending["anchor"], "response_hash": self.pending["response_hash"]}
+        if context:
+            reply["caller_messages"] = context
         current_instructions = instructions(normalized)
         if digest(current_instructions) != self.pending["instructions"]:
             reply["caller_instructions"] = current_instructions

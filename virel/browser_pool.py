@@ -11,7 +11,7 @@ from anyio import CancelScope
 import psutil
 from starlette.requests import Request
 from .errors import GatewayError, http_error_handler
-from .tool_runs import digest
+from .tool_runs import digest, result_context
 
 logger = logging.getLogger("virel.webhook")
 MB = 1024 * 1024
@@ -132,12 +132,13 @@ class BrowserPool:
     async def acquire(self, scope):
         if scope.admitted:
             raise RuntimeError("Request already owns execution admission")
-        continuation = bool(scope.history and scope.history[-1].get("role") == "tool")
+        result_history, _ = result_context(scope.history)
+        continuation = bool(result_history and result_history[-1].get("role") == "tool")
         deadline = time.monotonic() + self.timeout
         await self.prune()
         async with self.condition:
             if continuation:
-                call_id = scope.history[-1]["tool_call_id"]
+                call_id = result_history[-1]["tool_call_id"]
                 slot = next((s for s in self.slots.values() if s.worker.tool_run.pending and
                              any(c["id"] == call_id for c in s.worker.tool_run.pending["calls"])), None)
                 if slot is None or slot.owner != scope.owner or slot.busy or slot.worker.page.is_closed():
