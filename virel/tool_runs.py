@@ -38,9 +38,9 @@ def instructions(history):
     return [turn for turn in history if turn.get("role") in ("system", "developer")]
 
 def result_context(history):
-    """Separate authenticated user context appended after a client's tool results."""
+    """Separate authenticated caller context appended after a client's tool results."""
     end = len(history or [])
-    while end and history[end-1].get("role") == "user" and not history[end-1].get("tool_calls"):
+    while end and history[end-1].get("role") in ("user", "system", "developer") and not history[end-1].get("tool_calls"):
         end -= 1
     if end and history[end-1].get("role") == "tool":
         return history[:end], history[end:]

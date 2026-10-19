@@ -52,14 +52,14 @@ def tool_result_blocks(value):
     return json.dumps(value, ensure_ascii=False)
 
 
-def loaded_tool_names(body):
+def loaded_tool_names(body, *, eager=False):
     """Derive visibility from validated, ordered client history, never tool-output prose."""
     tools = body.get("tools", [])
     if any(not isinstance(tool.get("name"), str) for tool in tools):
         invalid("Client tools require text names.")
     names = {tool["name"] for tool in tools}
     deferred = {tool.get("name") for tool in tools if tool.get("defer_loading", False)}
-    loaded = names - deferred
+    loaded = names if eager else names - deferred
     if deferred and not loaded:
         invalid("At least one client tool must be non-deferred.")
     for message in body["messages"]:
@@ -81,7 +81,7 @@ def loaded_tool_names(body):
                     invalid("Tool reference must identify a declared client tool.")
                 if not part.get("is_error", False):
                     loaded.add(name)
-    return loaded if deferred else None
+    return loaded if deferred and not eager else None
 
 
 def media_part(part):
@@ -283,7 +283,7 @@ async def messages_response(body,sem,owner,*,desktop=False):
                 sum(tool.get("defer_loading", False) for tool in body.get("tools", [])), body["max_tokens"])
     plan=None
     if is_tool_request(converted):
-        visible = loaded_tool_names(body)
+        visible = loaded_tool_names(body, eager=desktop)
         plan=prepare_tools(converted,False,visible_tools=visible)
         if visible is not None:
             plan["deferred_tools"] = sorted(tool["name"] for tool in body["tools"] if tool.get("defer_loading", False))
