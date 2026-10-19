@@ -8,7 +8,7 @@ KEYS={"type","properties","required","items","description","enum","additionalPro
       "minimum","maximum","exclusiveMinimum","exclusiveMaximum","minLength","maxLength",
       "minItems","maxItems","minProperties","maxProperties","$schema","title","default",
       "anyOf","oneOf","const","$defs","definitions","$ref","examples","example","$comment",
-      "deprecated","readOnly","writeOnly","pattern","propertyNames"}
+      "deprecated","readOnly","writeOnly","pattern","propertyNames","format"}
 TYPES={"object","array","string","number","integer","boolean","null"}
 logger = logging.getLogger("virel.webhook")
 DIAGNOSTIC_KEYWORDS = {"format", "allOf", "not", "if", "then", "else", "uniqueItems", "multipleOf",
@@ -142,7 +142,7 @@ def project_schema(schema):
         if "$ref" in node:
             ref=node["$ref"]
             if ref in refs: fail("Recursive function schema references are unavailable.")
-            if set(node)-{"$ref","description","title","default","examples","example","$comment"}:
+            if set(node)-{"$ref","description","title","default","examples","example","$comment","format"}:
                 fail("Local references accept annotation siblings only.")
             result=compile(target(ref),depth+1,refs+(ref,),hint)
             if "description" in node:
@@ -153,7 +153,7 @@ def project_schema(schema):
         if len(unions)>1: fail("A schema node may contain one union operator.")
         if unions or isinstance(kinds,list):
             if unions:
-                if set(node)-{unions[0],"type","description","title","default","examples","example","$comment","$schema","$defs","definitions"}:
+                if set(node)-{unions[0],"type","description","title","default","examples","example","$comment","$schema","$defs","definitions","format"}:
                     fail("Union structural siblings are unavailable; keep them inside each branch.")
                 branches=node[unions[0]]
                 if not isinstance(branches,list) or not branches: fail("Schema union requires nonempty branches.")
@@ -176,6 +176,7 @@ def project_schema(schema):
         if not isinstance(kind,str) or kind not in TYPES:
             fail("Every function schema node must have an inferable supported JSON type.")
         native={"type":kind}; children={}; items=None
+        # format remains an annotation in the original schema/prompt, as in the Draft validator.
         if "description" in node: native["description"]=node["description"]
         if "enum" in node and kind=="string":
             native["enum"]=[value for value in node["enum"] if isinstance(value,str)]
