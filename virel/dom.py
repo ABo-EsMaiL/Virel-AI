@@ -219,3 +219,14 @@ FETCH_RESPONSE_STATE = '''(initialCount) => {
                 tool_calls: toolCallsCount
             };
         }'''.replace('__SELECTORS__', json.dumps(ERROR_SELECTORS)).replace('__PATTERN__', json.dumps(ERROR_PATTERN))
+
+
+def response_state_script(preserve_markdown=False):
+    """Opt-in formatting at the text seam; disabled needs no optional module."""
+    if not preserve_markdown:
+        return FETCH_RESPONSE_STATE
+    from .response_markdown import RENDER_MARKDOWN
+    return FETCH_RESPONSE_STATE.replace(
+        "const t = (chunk.innerText || '').trim();",
+        "const t = (" + RENDER_MARKDOWN + ")(chunk);",
+    )
