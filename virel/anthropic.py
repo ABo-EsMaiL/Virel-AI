@@ -2,6 +2,7 @@
 import asyncio
 from contextlib import aclosing
 import json
+import logging
 import re
 import time
 import uuid
@@ -14,6 +15,8 @@ from .schemas import ChatMessage
 from .runtime import browser_manager
 from .streaming import text_events
 from .tools import bounded, is_tool_request, prepare_tools, _function_events
+
+logger = logging.getLogger("virel.webhook")
 
 def invalid(message, unsupported=False):
     raise GatewayError(400, message, "unsupported_capability" if unsupported else "invalid_request")
@@ -36,6 +39,50 @@ def text_blocks(value):
         cache_hint(part)
         parts.append(part["text"])
     return "\n".join(parts)
+
+def tool_result_blocks(value):
+    if not isinstance(value, list) or not any(isinstance(p, dict) and p.get("type") == "tool_reference" for p in value):
+        return text_blocks(value)
+    for part in value:
+        if isinstance(part, dict) and part.get("type") == "tool_reference":
+            if set(part) != {"type", "tool_name"} or not isinstance(part["tool_name"], str):
+                invalid("Invalid tool_reference block.")
+        else:
+            text_blocks([part])
+    return json.dumps(value, ensure_ascii=False)
+
+
+def loaded_tool_names(body, *, eager=False):
+    """Derive visibility from validated, ordered client history, never tool-output prose."""
+    tools = body.get("tools", [])
+    if any(not isinstance(tool.get("name"), str) for tool in tools):
+        invalid("Client tools require text names.")
+    names = {tool["name"] for tool in tools}
+    deferred = {tool.get("name") for tool in tools if tool.get("defer_loading", False)}
+    loaded = names if eager else names - deferred
+    if deferred and not loaded:
+        invalid("At least one client tool must be non-deferred.")
+    for message in body["messages"]:
+        if not isinstance(message["content"], list):
+            continue
+        for part in message["content"]:
+            if part.get("type") == "tool_use":
+                if not isinstance(part.get("name"), str):
+                    invalid("Historical tool use requires a text name.")
+                if part["name"] in deferred and part["name"] not in loaded:
+                    invalid("Historical tool use precedes discovery of its deferred definition.")
+            if part.get("type") != "tool_result" or not isinstance(part.get("content"), list):
+                continue
+            for reference in part["content"]:
+                if reference.get("type") != "tool_reference":
+                    continue
+                name = reference["tool_name"]
+                if name not in names:
+                    invalid("Tool reference must identify a declared client tool.")
+                if not part.get("is_error", False):
+                    loaded.add(name)
+    return loaded if deferred and not eager else None
+
 
 def media_part(part):
     source = part.get("source")
@@ -60,12 +107,21 @@ def media_part(part):
         return {"type":"image_url","image_url":{"url":uri}}
     return {"type":"file","file":{("file_data" if kind=="base64" else "file_url"):uri}}
 
-def native_history(messages):
+def native_history(messages, *, desktop=False):
     if not isinstance(messages,list) or not messages:
         invalid("A nonempty messages array is required.")
     history = []
-    for message in messages:
-        if not isinstance(message,dict) or set(message)-{"role","content"} or message.get("role") not in ("user","assistant"):
+    for index, message in enumerate(messages):
+        extra = set(message)-{"role","content"} if isinstance(message,dict) else set()
+        role_valid = isinstance(message,dict) and message.get("role") in (("user","assistant","system") if desktop else ("user","assistant"))
+        if not isinstance(message,dict) or extra or not role_valid:
+            # Structural names only; never log content, role or unknown-field values.
+            fields = sorted(key if isinstance(key,str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}",key)
+                            else "<redacted>" for key in extra)[:16]
+            role = message.get("role") if isinstance(message,dict) else None
+            role_kind = role if role in ("user","assistant","system","developer","tool","function","human","ai") else type(role).__name__
+            logger.warning("Messages shape rejected index=%d object=%s role_valid=%s role_kind=%s extra_count=%d extra_fields=%s",
+                           index, isinstance(message,dict), role_valid, role_kind, len(extra), fields)
             invalid("Messages require user/assistant roles and content.")
         role, content = message["role"], message.get("content")
         if isinstance(content,str):
@@ -98,7 +154,7 @@ def native_history(messages):
                 if set(part)-{"type","tool_use_id","content","is_error","cache_control"} or type(part.get("is_error",False)) is not bool:
                     invalid("Invalid tool_result block.")
                 flush()
-                result = text_blocks(part.get("content",""))
+                result = tool_result_blocks(part.get("content",""))
                 if part.get("is_error"):
                     result = json.dumps({"is_error":True,"content":result},ensure_ascii=False)
                 history.append({"role":"tool","tool_call_id":part.get("tool_use_id"),"content":result})
@@ -115,7 +171,7 @@ def native_history(messages):
         flush()
     return history
 
-def normalize_request(body):
+def normalize_request(body, *, desktop=False):
     if not isinstance(body,dict):
         invalid("Expected a JSON object.")
     bounded(body,MAX_REQUEST_BYTES,"Messages request")
@@ -148,7 +204,7 @@ def normalize_request(body):
     context=body.get("context_management")
     if context is not None and context not in ({},{"edits":[]},{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}):
         invalid("Context edits are unavailable; no thinking transcript is emitted to clear.",True)
-    converted={"model":body["model"],"messages":native_history(body.get("messages")),"stream":False}
+    converted={"model":body["model"],"messages":native_history(body.get("messages"),desktop=desktop),"stream":False}
     if "system" in body:
         converted["messages"].insert(0,{"role":"system","content":text_blocks(body["system"])})
     if "temperature" in body: converted["temperature"]=body["temperature"]
@@ -157,10 +213,23 @@ def normalize_request(body):
     if not isinstance(tools,list): invalid("tools must be an array.")
     if tools:
         converted["tools"]=[]
-        for tool in tools:
-            if not isinstance(tool,dict) or set(tool)-{"name","description","input_schema","cache_control","type"} or tool.get("type","custom") != "custom":
+        for index, tool in enumerate(tools):
+            extra = set(tool)-{"name","description","input_schema","cache_control","type","defer_loading"} if isinstance(tool,dict) else set()
+            kind = tool.get("type","custom") if isinstance(tool,dict) else None
+            if not isinstance(tool,dict) or extra or kind != "custom":
+                fields = sorted(key if isinstance(key,str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}",key)
+                                else "<redacted>" for key in extra)[:16]
+                kind_label = kind if isinstance(kind,str) and (kind == "custom" or re.fullmatch(r"(?:bash|text_editor|computer|web_search|web_fetch|tool_search_tool_regex|tool_search_tool_bm25)_[0-9]{8}",kind)) else type(kind).__name__
+                flags = {key:tool[key] if type(tool[key]) is bool else type(tool[key]).__name__
+                         for key in ("strict","defer_loading","eager_input_streaming") if isinstance(tool,dict) and key in tool}
+                logger.warning("Tool shape rejected index=%d kind=%s extra_count=%d extra_fields=%s flags=%s",
+                               index, kind_label, len(extra), fields, flags)
                 invalid("Only client-owned custom tools are available.",True)
             cache_hint(tool)
+            if "defer_loading" in tool and type(tool["defer_loading"]) is not bool:
+                invalid("defer_loading must be boolean.")
+            if tool.get("defer_loading") and tool.get("cache_control") is not None:
+                invalid("Deferred tools cannot have cache_control.")
             converted["tools"].append({"type":"function","function":{"name":tool.get("name"),
                 "description":tool.get("description",""),"parameters":tool.get("input_schema")}})
     if "tool_choice" in body:
@@ -187,7 +256,7 @@ def native_payload(payload,identifier):
         content.append({"type":"tool_use","id":call["id"],"name":call["function"]["name"],"input":json.loads(call["function"]["arguments"])})
     usage=payload.get("usage")
     return {"id":identifier,"type":"message","role":"assistant","model":payload["model"],"content":content,
-            "stop_reason":"tool_use" if message.get("tool_calls") else "end_turn","stop_sequence":None,
+            "stop_reason":"tool_use" if message.get("tool_calls") else ("max_tokens" if payload["choices"][0]["finish_reason"] == "length" else "end_turn"),"stop_sequence":None,
             "usage":{"input_tokens":usage["prompt_tokens"] if usage else None,
                      "output_tokens":usage["completion_tokens"] if usage else None}}
 
@@ -197,13 +266,38 @@ def native_error(error):
           429:"rate_limit_error",529:"overloaded_error"}.get(error.status_code,"api_error" if error.status_code>=500 else "invalid_request_error")
     return {"type":"error","error":{"type":kind,"message":detail["message"]},"request_id":"req_"+uuid.uuid4().hex[:16]}
 
-async def messages_response(body,sem,owner):
-    converted,options=normalize_request(body)
+async def messages_response(body,sem,owner,*,desktop=False):
+    converted,options=normalize_request(body,desktop=desktop)
+    alias = converted["model"] if desktop else None
+    if desktop:
+        from .models import desktop_aliases
+        await require_ready()
+        target = desktop_aliases(browser_manager.model_catalog).get(alias)
+        if target is None:
+            if alias in ("claude-3.8-flash-tts", "claude-3.8-flash-lite-tts"):
+                target = alias.replace("claude", "gemini")
+            else:
+                raise GatewayError(404,"Requested Desktop alias was not observed as available.","model_not_found")
+        converted["model"] = target
+    from .image_agent import is_image_model, handle_anthropic_image_request
+    catalog = getattr(browser_manager, "model_catalog", {})
+    if is_image_model(converted["model"], catalog):
+        return await handle_anthropic_image_request(body, converted, alias, sem, owner, desktop=desktop)
     identifier="msg_"+uuid.uuid4().hex[:24]
     now=int(time.time())
+    logger.info("Messages request %s desktop=%s stream=%s tools=%d deferred=%d max_tokens=%d",
+                identifier, desktop, body.get("stream", False), len(body.get("tools", [])),
+                sum(tool.get("defer_loading", False) for tool in body.get("tools", [])), body["max_tokens"])
     plan=None
+    has_media = any(
+        isinstance(m.get("content"), list) and any(isinstance(p, dict) and p.get("type") in ("image", "document", "image_url", "file") for p in m["content"])
+        for m in converted.get("messages", [])
+    )
     if is_tool_request(converted):
-        plan=prepare_tools(converted,False)
+        visible = loaded_tool_names(body, eager=desktop)
+        plan=prepare_tools(converted,False,visible_tools=visible,allow_image_tool=desktop,allow_media=desktop,allow_voice_tool=desktop)
+        if visible is not None:
+            plan["deferred_tools"] = sorted(tool["name"] for tool in body["tools"] if tool.get("defer_loading", False))
         plan["materialize_defaults"]=True
         browser_manager.prepare(plan["history"],bool(plan["declarations"]))
     await require_ready()
@@ -215,15 +309,24 @@ async def messages_response(body,sem,owner):
         source=text_events(prompt,identifier,now,converted["model"],False,sem,images=images,**options)
     headers={**reasoning_headers(converted), "X-Virel-Prompt-Cache":"unavailable","X-Virel-Thinking-Transcript":"unavailable",
              "X-Virel-Model-Provider":"google-ai-studio","X-Virel-Stop-Reason":"browser-completion-or-tool-use"}
+    if alias:
+        headers.update({"X-Virel-Model-Alias":alias,"X-Virel-Requested-UI-Model":converted["model"]})
     async def completed():
         final=None
         async with aclosing(source):
             async for item in source:
                 if "response" in item: final=item
         if final is None: raise GatewayError(502,"Generation ended without a completed message.","incomplete_upstream_stream")
-        return native_payload(final["response"],identifier),final
+        payload = native_payload(final["response"],identifier)
+        if alias:
+            payload["virel"] = {"compatibility_alias":True,"requested_ui_model":converted["model"],
+                                "actual_model":payload["model"],"actual_provider":"google-ai-studio"}
+            payload["model"] = alias
+        return payload,final
     if not body.get("stream",False):
         payload,final=await completed()
+        if alias:
+            headers["X-Virel-Actual-Model"] = payload["virel"]["actual_model"]
         return JSONResponse(payload,headers={**final.get("headers",{}),**headers})
     async def serialize():
         pending=None

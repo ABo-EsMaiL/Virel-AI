@@ -8,6 +8,9 @@ venv/
 session_data.json
 debug_*.png
 graphify-out/
+generated_audio/
+generated_images/
+powershell.cmd
 
 runtime/
 

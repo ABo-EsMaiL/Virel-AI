@@ -32,6 +32,12 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
 
     body = await request.json()
     include_usage = validate_stream(body)
+    model_name = chat_request.model or DEFAULT_MODEL
+    from ..image_agent import is_image_model, handle_openai_image_request
+    catalog = getattr(browser_manager, "model_catalog", {})
+    msgs_raw = [m.model_dump() if hasattr(m, "model_dump") else (m.dict() if hasattr(m, "dict") else m) for m in (chat_request.messages or [])]
+    if is_image_model(model_name, catalog):
+        return await handle_openai_image_request(request, chat_request, sem)
     if is_tool_request(body):
         return await function_response(body, False, sem, owner=request.headers.get("authorization", ""))
     generation_options = validate_options(body)
@@ -96,6 +102,6 @@ async def chat_completions(request: Request, chat_request: ChatRequest):
                             "role": "assistant",
                             "content": full_text
                         },
-                        "finish_reason": "stop"
+                        "finish_reason": "length" if browser_manager.last_finish_reason == "max_tokens" else "stop"
                     }]
                 }, headers=headers)

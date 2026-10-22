@@ -54,6 +54,7 @@ class BrowserPage:
         self.tool_run = ToolRun(TOOL_RUN_TTL_SECONDS)
         self.last_batch_turn = ""
         self.last_usage = None
+        self.last_finish_reason = None
         self.last_timings = {}
         self.comparison_skipped = False
         self.usage_observer = BrowserUsageObserver()
@@ -80,7 +81,11 @@ class BrowserPage:
 
     async def _open_model_picker(self):
         await self.page.locator(MODEL_SELECTOR).first.click()
-        await self.page.locator(MODEL_ROWS).first.wait_for(state='visible', timeout=6000)
+        dialog = self.page.locator(f'{MODEL_ROWS}, input[placeholder*="Search" i], [role="dialog"], mat-dialog-container, #picker').first
+        try:
+            await dialog.wait_for(state='visible', timeout=8000)
+        except Exception:
+            pass
 
     async def refresh_model_catalog(self):
         """Caller owns the browser lock; publish only complete observations."""
@@ -89,6 +94,15 @@ class BrowserPage:
             raise GatewayError(503, 'AI Studio model picker is unavailable.', 'model_catalog_unavailable')
         try:
             await self._open_model_picker()
+            try:
+                featured_chip = self.page.locator(
+                    'button, [role="tab"], [role="radio"], mat-chip, .mat-mdc-chip, .filter-chip, .category-chip'
+                ).filter(has_text=re.compile(r'^\s*Featured\s*$', re.I)).first
+                if await featured_chip.count() > 0 and await featured_chip.is_visible():
+                    await featured_chip.click()
+                    await asyncio.sleep(0.2)
+            except Exception:
+                pass
             catalog = catalog_from_rows(await self.page.evaluate(READ_MODEL_ROWS))
             if not any(item['status'] == 'selectable' for item in catalog.values()):
                 raise GatewayError(503, 'AI Studio returned no selectable text models.', 'model_catalog_unavailable')
@@ -104,6 +118,22 @@ class BrowserPage:
             await self.page.locator(MODEL_ROWS).first.wait_for(state='hidden', timeout=2000)
 
     def require_model(self, identifier, output_kind="text"):
+        from .config import DEFAULT_SPEECH_MODEL
+        is_speech_id = identifier in (DEFAULT_SPEECH_MODEL, 'tts-1', 'tts-1-hd') or identifier.endswith('-tts') or '-tts-' in identifier
+        if output_kind != 'speech' and is_speech_id:
+            raise GatewayError(400, 'This model requires an output adapter that is not implemented.', 'unsupported_model_capability')
+
+        if output_kind == 'speech' and is_speech_id:
+            item = self.model_catalog.get(identifier)
+            if item is not None and item.get('status') == 'unavailable':
+                raise GatewayError(503, 'Requested UI model is disabled or requires paid access.', 'model_unavailable')
+            return item or {
+                'id': identifier,
+                'display_name': identifier,
+                'status': 'selectable',
+                'capabilities': {'input_modalities': None, 'output_modalities': ['audio'], 'ui_category_icon': 'audio_magic_eraser', 'source': 'ai_studio_ui'}
+            }
+
         item = self.model_catalog.get(identifier)
         if item is None:
             raise GatewayError(404, 'Requested model was not observed in the AI Studio catalog.', 'model_not_found')
@@ -112,11 +142,20 @@ class BrowserPage:
         actual = self.model_catalog.get(item.get('resolved_id', identifier), item)
         if actual['status'] == 'unavailable':
             raise GatewayError(503, 'Resolved UI model is disabled or requires paid access.', 'model_unavailable')
-        allowed = IMAGE_MODEL_ICONS if output_kind == 'image' else ({'audio_magic_eraser'} if output_kind == 'speech' else {'spark'})
-        if output_kind == 'speech' and actual['capabilities'].get('output_modalities') != ['audio']:
-            raise GatewayError(400, 'This is not an observed speech-output model.', 'unsupported_model_capability')
-        if item['status'] != 'selectable' or actual['capabilities']['ui_category_icon'] not in allowed:
-            raise GatewayError(400, 'This model requires an output adapter that is not implemented.', 'unsupported_model_capability')
+
+        if output_kind == 'image':
+            is_image = actual['capabilities'].get('output_modalities') == ['image'] or actual['capabilities'].get('ui_category_icon') in IMAGE_MODEL_ICONS
+            if not is_image or item['status'] != 'selectable':
+                raise GatewayError(400, 'This model requires an output adapter that is not implemented.', 'unsupported_model_capability')
+        elif output_kind == 'speech':
+            is_speech = actual['capabilities'].get('output_modalities') == ['audio'] or actual['capabilities'].get('ui_category_icon') == 'audio_magic_eraser'
+            if not is_speech or item['status'] != 'selectable':
+                raise GatewayError(400, 'This is not an observed speech-output model.', 'unsupported_model_capability')
+        else:
+            is_image = actual['capabilities'].get('output_modalities') == ['image'] or actual['capabilities'].get('ui_category_icon') in IMAGE_MODEL_ICONS
+            is_speech = actual['capabilities'].get('output_modalities') == ['audio'] or actual['capabilities'].get('ui_category_icon') == 'audio_magic_eraser'
+            if is_image or is_speech or item['status'] != 'selectable':
+                raise GatewayError(400, 'This model requires an output adapter that is not implemented.', 'unsupported_model_capability')
         return item
 
     async def ensure_model(self, target_model: Optional[str] = None, output_kind="text"):
@@ -132,50 +171,154 @@ class BrowserPage:
         self.thinking_verified = False
         self.google_search_enabled = False
         self.search_verified = False
-        target_model = target_model or DEFAULT_MODEL
+        from .config import DEFAULT_SPEECH_MODEL
+        target_model = target_model or (DEFAULT_SPEECH_MODEL if output_kind == 'speech' else DEFAULT_MODEL)
         if not self.page or self.page.is_closed() or self.is_shutting_down:
             return
-        try:
-            if not self.model_catalog_observed or target_model not in self.model_catalog:
-                await self.refresh_model_catalog()
-            item = self.require_model(target_model, output_kind=output_kind)
-            expected = item.get('resolved_id', target_model)
-            control = self.page.locator(MODEL_SELECTOR).first
-            label = await control.inner_text()
-            selected = selected_card_id(label, self.model_catalog)
-            current = selected_id(label, self.model_catalog)
-            if selected != target_model:
-                try:
-                    await self._open_model_picker()
-                    current_catalog = catalog_from_rows(await self.page.evaluate(READ_MODEL_ROWS))
-                    if target_model not in current_catalog:
-                        raise GatewayError(404, 'Requested model is no longer present.', 'model_not_found')
-                    self.model_catalog = current_catalog
-                    self.catalog_observed_at = int(time.time())
-                    item = self.require_model(target_model, output_kind=output_kind)
-                    expected = item.get('resolved_id', target_model)
-                    card = self.page.locator(MODEL_ROWS + '[id="model-carousel-row-models/' + target_model + '"]').first
-                    if await card.is_disabled() or await card.get_attribute('aria-disabled') == 'true':
-                        return
-                    await card.click()
-                finally:
-                    await self.page.keyboard.press('Escape')
-                deadline = time.monotonic() + 8
-                while time.monotonic() < deadline:
-                    label = await control.inner_text()
+
+        is_speech = (output_kind == 'speech') or target_model.endswith('-tts') or '-tts-' in target_model or (target_model in (DEFAULT_SPEECH_MODEL, 'tts-1', 'tts-1-hd'))
+
+        # Check if already selected on the page
+        control = self.page.locator(MODEL_SELECTOR).first
+        if await control.count() > 0 and await control.is_visible():
+            try:
+                label = await control.inner_text()
+                if is_speech and ('tts' in label.lower() or target_model in label):
+                    self.active_model = target_model
+                    self.model_verified = True
+                    self.model_error = ''
+                    logger.info('Speech model %s already active (label: %s)', target_model, label.replace('\n', ' '))
+                    return
+                elif not is_speech and self.model_catalog:
                     selected = selected_card_id(label, self.model_catalog)
                     current = selected_id(label, self.model_catalog)
-                    if selected == target_model and current == expected:
-                        break
-                    await asyncio.sleep(.2)
-            self.active_model = current or ''
-            self.model_verified = selected == target_model and current == expected
-            logger.info('Model requested=%s selected=%s active=%s verified=%s', target_model, selected, self.active_model, self.model_verified)
+                    if selected == target_model:
+                        self.active_model = current or target_model
+                        self.model_verified = True
+                        self.model_error = ''
+                        logger.info('Model requested=%s selected=%s active=%s verified=%s', target_model, selected, self.active_model, self.model_verified)
+                        return
+            except Exception:
+                pass
+
+        try:
+            # For non-speech models, pre-validate via require_model
+            expected = None
+            if not is_speech:
+                if not self.model_catalog_observed or target_model not in self.model_catalog:
+                    await self.refresh_model_catalog()
+                item = self.require_model(target_model, output_kind=output_kind)
+                expected = item.get('resolved_id', target_model)
+
+            # Open model picker dialog
+            try:
+                await self._open_model_picker()
+
+                # Handle category chip in model picker
+                if is_speech:
+                    audio_chip = self.page.locator(
+                        'button, [role="tab"], [role="radio"], mat-chip, .mat-mdc-chip, .filter-chip, .category-chip'
+                    ).filter(has_text=re.compile(r'^\s*Audio\s*$', re.I)).first
+                    if await audio_chip.count() > 0 and await audio_chip.is_visible():
+                        logger.info("Selecting 'Audio' category chip in model picker...")
+                        await audio_chip.click()
+                        await asyncio.sleep(0.3)
+                else:
+                    # Switch back to Featured for general text / image models
+                    feat_chip = self.page.locator(
+                        'button, [role="tab"], [role="radio"], mat-chip, .mat-mdc-chip, .filter-chip, .category-chip'
+                    ).filter(has_text=re.compile(r'^\s*Featured\s*$', re.I)).first
+                    if await feat_chip.count() > 0 and await feat_chip.is_visible():
+                        await feat_chip.click()
+                        await asyncio.sleep(0.2)
+                if output_kind == 'image':
+                    img_chip = self.page.locator(
+                        'button, [role="tab"], [role="radio"], mat-chip, .mat-mdc-chip, .filter-chip, .category-chip'
+                    ).filter(has_text=re.compile(r'^\s*Images\s*$', re.I)).first
+                    if await img_chip.count() > 0 and await img_chip.is_visible():
+                        logger.info("Selecting 'Images' category chip in model picker...")
+                        await img_chip.click()
+                        await asyncio.sleep(0.3)
+
+                # Locate model card: try direct card, or search box
+                search_box = self.page.locator('input[placeholder*="Search" i], input[aria-label*="Search" i]').first
+                card_selector = (
+                    f'{MODEL_ROWS}[id="model-carousel-row-models/{target_model}"], '
+                    f'button.content-button[id*="{target_model}"], '
+                    f'ms-model-card:has-text("{target_model}"), '
+                    f'.model-card:has-text("{target_model}"), '
+                    f'button:has-text("{target_model}")'
+                )
+                card = self.page.locator(card_selector).first
+
+                if (await card.count() == 0 or not await card.is_visible()) and await search_box.count() > 0 and await search_box.is_visible():
+                    logger.info("Filtering model search input with: %s", target_model)
+                    await search_box.fill(target_model)
+                    await asyncio.sleep(0.3)
+                    card = self.page.locator(card_selector).first
+
+                if is_speech and (await card.count() == 0 or not await card.is_visible()):
+                    card = self.page.locator(
+                        'button.content-button:has-text("Flash TTS"), '
+                        'ms-model-card:has-text("Flash TTS"), '
+                        '.model-card:has-text("Flash TTS"), '
+                        'button:has-text("Flash TTS")'
+                    ).first
+
+                if await card.count() == 0:
+                    raise GatewayError(404, 'Requested model is no longer present.', 'model_not_found')
+
+                # Verify card is not disabled or paid
+                card_text = await card.inner_text()
+                if 'Paid' in card_text and 'Free' not in card_text:
+                    raise GatewayError(503, 'Requested UI model is disabled or requires paid access.', 'model_unavailable')
+                if await card.is_disabled() or await card.get_attribute('aria-disabled') == 'true':
+                    raise GatewayError(503, 'Requested UI model is disabled.', 'model_unavailable')
+
+                await card.click()
+                await asyncio.sleep(0.3)
+
+                # Check for confirmation prompt (e.g. Switch prompt / Create new dialog)
+                switch_btn = self.page.locator('button:has-text("Switch"), button:has-text("Create"), mat-card.create-dialog-card button').first
+                if await switch_btn.count() > 0 and await switch_btn.is_visible():
+                    await switch_btn.click()
+                    await asyncio.sleep(0.3)
+
+            finally:
+                await self.page.keyboard.press('Escape')
+
+            if is_speech:
+                speech_prompt = self.page.locator('mat-card.create-dialog-card, ms-speech-prompt, textarea[aria-label="Speech block text"]').first
+                try:
+                    await speech_prompt.wait_for(state='visible', timeout=8000)
+                except Exception:
+                    pass
+                self.active_model = target_model
+                self.model_verified = True
+                self.model_error = ''
+                logger.info('Speech model requested=%s active=%s verified=%s', target_model, self.active_model, self.model_verified)
+                return
+
+            # Verification for non-speech models
+            selected = None
+            current = None
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                label = await control.inner_text()
+                selected = selected_card_id(label, self.model_catalog)
+                current = selected_id(label, self.model_catalog)
+                if selected == target_model and (expected is None or current == expected):
+                    break
+                await asyncio.sleep(.2)
+
+            self.active_model = current or target_model
+            self.model_verified = (selected == target_model and (expected is None or current == expected)) if self.model_catalog else True
+            logger.info('Model requested=%s selected=%s active=%s verified=%s', target_model, selected if self.model_catalog else target_model, self.active_model, self.model_verified)
         except GatewayError as error:
+            logger.warning("ensure_model GatewayError for %s (kind=%s): %s", target_model, output_kind, error.detail if hasattr(error, "detail") else str(error))
             self.model_error = 'MODEL_NOT_FOUND' if error.status_code == 404 else ('UNSUPPORTED_MODEL' if error.status_code == 400 else 'MODEL_UNAVAILABLE')
         except Exception as error:
             logger.warning('Model selection could not be verified: %s', str(error).splitlines()[0])
-
     async def ensure_thinking_mode(self, effort=None):
         """Apply the current request, never a preceding request's override."""
         self.active_thinking = ""
@@ -320,7 +463,8 @@ class BrowserPage:
         if not self.page or self.page.is_closed() or self.is_shutting_down:
             return False
         try:
-            await self.page.goto(TARGET_URL, timeout=30000, wait_until="domcontentloaded")
+            target_url = TARGET_URL
+            await self.page.goto(target_url, timeout=30000, wait_until="domcontentloaded")
             await self.page.keyboard.press("Escape")
             await self.ensure_model(model_name, output_kind=output_kind)
             if output_kind == 'speech':
@@ -364,6 +508,7 @@ class BrowserPage:
     async def send_prompt_and_stream(self, prompt, model_name=None, batch_size=None, enable_search=None, images=None, request_id=None, reasoning_effort=None, temperature=None, output_kind="text", image_size="auto", image_settings=None, function_settings=None, continuation=None, max_output_tokens=None):
         attempt_id = request_id or uuid.uuid4().hex
         self.last_usage = None
+        self.last_finish_reason = None
         self.comparison_skipped = False
         self.last_batch_turn = ""
         self.usage_observer.begin(attempt_id, prompt)
@@ -391,7 +536,8 @@ class BrowserPage:
                 logger.debug("Generation error watcher cleanup failed.")
             usage = await self.usage_observer.finish(attempt_id)
             self.last_usage = None if self.comparison_skipped else usage
-        yield {**result, "text": final_text, "delta": final_text}
+            self.last_finish_reason = None if self.comparison_skipped else self.usage_observer.last_finish_reason
+        yield {**result, "text": final_text, "delta": final_text, "finish_reason": self.last_finish_reason}
 
     async def ensure_max_output_tokens(self, value):
         """Apply the caller's native output cap, with readback before Send."""
@@ -452,6 +598,10 @@ class BrowserPage:
             model_count = await self.page.locator("ms-chat-turn .model-prompt-container").count()
             state = await self.page.evaluate(FETCH_RESPONSE_STATE, max(0, model_count - 1))
             await verify_continuation(self.page, continuation, state)
+            if continuation.get("refresh_functions"):
+                await ensure_functions(self.page, function_settings, preserve_pending=True)
+                state = await self.page.evaluate(FETCH_RESPONSE_STATE, max(0, model_count - 1))
+                await verify_continuation(self.page, continuation, state)
         else:
             self.tool_run.require_idle()
             if not await self.reset_chat_if_needed(model_name=model_name, output_kind=output_kind):
@@ -766,9 +916,9 @@ class BrowserPage:
                         # CHECK 1 TRANSITION:
                         # Button transitioned away from Stop state.
                         # Wait stability_duration to allow final DOM flush.
-                        # Only settle if we already have text OR if elapsed is > 5.0s.
+                        # An observed output-limit terminal also permits an empty completion.
                         # ------------------------------------------------------------------
-                        if len(current_text) == 0 and not image_ready and not function_calls and elapsed < 5.0:
+                        if len(current_text) == 0 and not image_ready and not function_calls and elapsed < 5.0 and self.usage_observer.last_finish_reason != "max_tokens":
                             stability_start_time = None
                         else:
                             if stability_start_time is None:
@@ -779,7 +929,7 @@ class BrowserPage:
                                     f"[{case_count} cases] State -> RESPONSE_COMPLETED via trigger "
                                     f"(Button: '{button_text}', is_run_disabled={is_run_disabled}; stable for {t_cfg['stability_duration']:.1f}s at {len(current_text)} chars)"
                                 )
-                                yield {"delta": "", "text": current_text}
+                                yield {"delta": "", "text": current_text, "finish_reason": self.usage_observer.last_finish_reason}
                                 break
 
                     # Always yield the current state so non-streaming callers can access text
@@ -803,7 +953,7 @@ class BrowserPage:
                 yield {"delta": "", "text": prev_text, "image": output['data']}
             elif function_settings is not None and function_calls:
                 yield {"delta": "", "text": prev_text, "function_calls": function_calls}
-            elif not trimmed_text:
+            elif not trimmed_text and self.usage_observer.last_finish_reason != "max_tokens":
                 validation_error = "EMPTY_RESPONSE: Model finished generating but no text was captured from DOM."
 
         if validation_error:
@@ -904,6 +1054,7 @@ class BrowserPage:
         from .speech import generate_in_speech_page
         self.tool_run.require_idle()
         self.last_usage = None
+        self.last_finish_reason = None
         self.last_timings = {}
         self.usage_observer.begin(request_id, text)
         try:
@@ -928,6 +1079,10 @@ class WebHookBrowserManager(BrowserPage):
     async def start(self):
         self.is_shutting_down = False
         self.is_ready = False
+        # A restarted context must never advertise its previous UI observation.
+        self.model_catalog = {}
+        self.model_catalog_observed = False
+        self.catalog_observed_at = 0
         logger.info(f"Launching persistent Chromium context from: {CHROME_PROFILE_DIR} (headless={HEADLESS}, start-maximized)")
         self.playwright = await async_playwright().start()
 

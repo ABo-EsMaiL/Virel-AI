@@ -2,11 +2,14 @@
 
 import asyncio
 import os
+import re
 import time
 from fastapi import APIRouter, Depends
+from fastapi.responses import Response
 
 from ..auth import verify_api_key
-from ..config import RUNTIME_DIR, SESSION_DATA_PATH, HEADLESS, DEFAULT_MODEL, THINKING_MODE, PORT, RATE_LIMIT
+from ..config import BASE_DIR, RUNTIME_DIR, SESSION_DATA_PATH, HEADLESS, DEFAULT_MODEL, THINKING_MODE, PORT, RATE_LIMIT
+from ..errors import GatewayError
 from ..runtime import browser_manager
 
 router = APIRouter()
@@ -67,6 +70,55 @@ async def health_check():
         "port": PORT,
         "rate_limit": RATE_LIMIT
     }
+
+
+@router.get("/images/{filename}")
+@router.get("/claude/images/{filename}")
+async def serve_image(filename: str):
+    """Serve locally generated chat images for web views and desktop markdown previews."""
+    if not re.fullmatch(r"image_[0-9]+_[0-9a-fA-F]+\.(?:png|jpg|jpeg|webp)", filename):
+        raise GatewayError(400, "Invalid image filename.", "invalid_request")
+    p1 = os.path.join(RUNTIME_DIR, "generated_images", filename)
+    p2 = os.path.join(BASE_DIR, "generated_images", filename)
+    target = p1 if os.path.isfile(p1) else (p2 if os.path.isfile(p2) else None)
+    if not target:
+        raise GatewayError(404, "Image not found.", "image_not_found")
+    with open(target, "rb") as f:
+        data = f.read()
+    mime = "image/png" if filename.endswith(".png") else ("image/webp" if filename.endswith(".webp") else "image/jpeg")
+    return Response(
+        content=data,
+        media_type=mime,
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+
+@router.get("/audio/{filename}")
+@router.get("/claude/audio/{filename}")
+async def serve_audio(filename: str):
+    """Serve locally generated chat audio / voice files for desktop and web playback."""
+    if not re.fullmatch(r"voice_[0-9]+_[0-9a-fA-F]+\.(?:mp3|wav|ogg|flac|aac)", filename):
+        raise GatewayError(400, "Invalid audio filename.", "invalid_request")
+    p1 = os.path.join(RUNTIME_DIR, "generated_audio", filename)
+    p2 = os.path.join(BASE_DIR, "generated_audio", filename)
+    target = p1 if os.path.isfile(p1) else (p2 if os.path.isfile(p2) else None)
+    if not target:
+        raise GatewayError(404, "Audio file not found.", "audio_not_found")
+    with open(target, "rb") as f:
+        data = f.read()
+    mime = "audio/mpeg" if filename.endswith(".mp3") else ("audio/wav" if filename.endswith(".wav") else "audio/ogg")
+    return Response(
+        content=data,
+        media_type=mime,
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
 
 
 @router.get("/v1/models", dependencies=[Depends(verify_api_key)])

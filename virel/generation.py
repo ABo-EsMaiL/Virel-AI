@@ -103,6 +103,7 @@ async def checked_stream(prompt, request_id, **options):
     if browser_manager.model_catalog_observed:
         browser_manager.require_model(options.get("model_name") or DEFAULT_MODEL, output_kind=options.get("output_kind", "text"))
     browser_manager.last_usage = None
+    browser_manager.last_finish_reason = None
     browser_manager.last_timings = {}
     text = ""
     has_image = False
@@ -123,13 +124,14 @@ async def checked_stream(prompt, request_id, **options):
                     if isinstance(item, dict) and "error" in item:
                         raise _browser_error(str(item["error"]))
                     if isinstance(item, dict):
+                        browser_manager.last_finish_reason = item.get("finish_reason", browser_manager.last_finish_reason)
                         has_functions |= bool(item.get("function_calls")) and "function_settings" in options
                         has_image |= bool(item.get("image")) and options.get("output_kind") == "image"
                         text = current
                     else:
                         text += item
                     yield item
-        if not text.strip() and not has_image and not has_functions:
+        if not text.strip() and not has_image and not has_functions and browser_manager.last_finish_reason != "max_tokens":
             raise GatewayError(502, "AI Studio returned no response text.", "empty_upstream_response")
         outcome = "completed"
     except (asyncio.CancelledError, GeneratorExit):
@@ -150,8 +152,8 @@ async def checked_stream(prompt, request_id, **options):
         raise GatewayError(502, "The browser generation failed.", "upstream_error") from None
     finally:
         usage = browser_manager.last_usage
-        logger.info("Request %s outcome=%s model=%s usage=%s", request_id, outcome, browser_manager.active_model,
-                    usage.responses() if usage else "unavailable")
+        logger.info("Request %s outcome=%s model=%s finish_reason=%s usage=%s", request_id, outcome, browser_manager.active_model,
+                    browser_manager.last_finish_reason or "unavailable", usage.responses() if usage else "unavailable")
 
 
 def usage_headers(request_id):

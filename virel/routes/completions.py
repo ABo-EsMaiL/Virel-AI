@@ -52,6 +52,6 @@ async def legacy_completions(request: Request):
                     "text": full_text,
                     "index": 0,
                     "logprobs": None,
-                    "finish_reason": "stop"
+                    "finish_reason": "length" if browser_manager.last_finish_reason == "max_tokens" else "stop"
                 }]
             }, headers={**usage_headers(chunk_id), **reasoning_headers(body)})

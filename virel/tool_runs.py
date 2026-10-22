@@ -37,6 +37,15 @@ def conversation(history):
 def instructions(history):
     return [turn for turn in history if turn.get("role") in ("system", "developer")]
 
+def result_context(history):
+    """Separate authenticated caller context appended after a client's tool results."""
+    end = len(history or [])
+    while end and history[end-1].get("role") in ("user", "system", "developer") and not history[end-1].get("tool_calls"):
+        end -= 1
+    if end and history[end-1].get("role") == "tool":
+        return history[:end], history[end:]
+    return history or [], []
+
 
 class ToolRun:
     def __init__(self, ttl):
@@ -54,19 +63,22 @@ class ToolRun:
         if self.pending:
             raise GatewayError(429, "The browser is waiting for this agent's function result. Finish that loop or wait for its idle timeout.", "tool_run_busy")
 
-    def remember(self, history, calls, config, anchor="", response_text="", text="", owner="", tool_schemas=None):
+    def remember(self, history, calls, config, anchor="", response_text="", text="", owner="", tool_schemas=None, visibility=None, internal_generated=False):
+        # Typed dictionary keys are caller data, including a key named tool.
         routing_tools = tuple(name for name, schema in (tool_schemas or {}).items()
-                              if "tool" not in schema.get("properties", {}))
+                              if "tool" not in schema.get("properties", {}) and
+                              not (isinstance(schema.get("additionalProperties"),dict) and schema["additionalProperties"]))
         normalized = canonical(history, routing_tools)
-        self.pending = {"prefix": digest(conversation(normalized)), "config": config,
+        self.pending = {"prefix": digest(conversation(normalized)), "config": config, "visibility": visibility,
                         "owner": owner, "routing_tools": routing_tools, "instructions": digest(instructions(normalized)),
                         "text": digest(text), "anchor": anchor, "response_hash": digest(response_text),
-                        "deadline": time.monotonic() + self.ttl,
+                        "deadline": time.monotonic() + self.ttl, "internal_generated": internal_generated,
                         "calls": [{"id": call["id"], "name": call["function"]["name"],
                                    "arguments_hash": digest(canonical_arguments(call["function"]["name"], call["function"]["arguments"], routing_tools))} for call in calls]}
 
     def resolve(self, history, config, owner=""):
         self.expire()
+        history, context = result_context(history)
         if not history or history[-1].get("role") != "tool":
             if self.pending and owner == self.pending["owner"]:
                 self.clear()
@@ -101,7 +113,9 @@ class ToolRun:
         if owner != self.pending["owner"] or config != self.pending["config"] or prefix != self.pending["prefix"] or supplied != expected or set(results) != set(expected):
             raise GatewayError(409, "Function IDs, previous history, caller or settings do not match the pending round.", "tool_continuation_conflict")
         reply = {"results": [{"call_id": c["id"], "name": c["name"], "output": results[c["id"]]} for c in self.pending["calls"]],
-                 "anchor": self.pending["anchor"], "response_hash": self.pending["response_hash"]}
+                 "anchor": self.pending["anchor"], "response_hash": self.pending["response_hash"], "internal_generated": self.pending.get("internal_generated", False)}
+        if context:
+            reply["caller_messages"] = context
         current_instructions = instructions(normalized)
         if digest(current_instructions) != self.pending["instructions"]:
             reply["caller_instructions"] = current_instructions
