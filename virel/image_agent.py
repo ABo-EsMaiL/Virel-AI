@@ -269,8 +269,9 @@ async def generate_chat_image(prompt: str, model_name: str = None, sources: list
     img_url = f"http://127.0.0.1:{PORT}/images/{fname}"
     intro = f"🎨 **لقد تم توليد الصورة بنجاح بواسطة موديل الصور ({actual_model})!**\n\n"
     img_md = f"![الصورة المولدة]({img_url})\n\n"
+    path_info = f"📁 **المسار المحلي للصورة على جهازك:**\n`{posix_path}`\n\n"
     footer = f"🔗 **[اضغط هنا لعرض الصورة بالحجم الكامل في المتصفح]({img_url})**" 
-    text = intro + img_md + footer
+    text = intro + img_md + path_info + footer
     return {
         "text": text,
         "intro": intro,
@@ -332,9 +333,11 @@ async def generate_chat_voice(text: str, voice: str = None) -> dict:
                 pass
 
             audio_url = f"http://127.0.0.1:{PORT}/audio/{fname}"
+            posix_path = file_path.as_posix()
             intro = f"🔊 **تم توليد المقطع الصوتي بنجاح ({target_voice})!**\n\n"
             link_md = f"▶️ **[اضغط هنا للاستماع للمقطع الصوتي]({audio_url})**\n\n"
-            full_text = intro + link_md
+            path_info = f"📁 **المسار المحلي للملف الصوتي على جهازك:**\n`{posix_path}`\n\n"
+            full_text = intro + link_md + path_info
             return {
                 "text": full_text,
                 "audio_url": audio_url,

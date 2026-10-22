@@ -478,7 +478,10 @@ def validate_calls(calls, plan):
 async def function_response(body, responses, sem, owner=""):
     from .config import DEFAULT_MODEL
     from .generation import validate_options, require_ready, reasoning_headers
-    plan = prepare_tools(body, responses, allow_image_tool=body.get("allow_image_tool", False), allow_media=body.get("allow_media", False), allow_voice_tool=body.get("allow_voice_tool", False))
+    allow_image = body.get("allow_image_tool", True)
+    allow_voice = body.get("allow_voice_tool", True)
+    allow_media = body.get("allow_media", True)
+    plan = prepare_tools(body, responses, allow_image_tool=allow_image, allow_media=allow_media, allow_voice_tool=allow_voice)
     ordinary = {k: v for k, v in body.items() if k not in ("tools", "tool_choice", "parallel_tool_calls", "stream_options")}
     if ordinary.get("text") == {}: ordinary.pop("text")
     options = validate_options(ordinary)

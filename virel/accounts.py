@@ -92,6 +92,7 @@ class AccountManager:
         self.default_profile_dir = default_profile_dir
         self.target_base_url = target_base_url
         self.cooldown_seconds = cooldown_seconds
+        self.authuser_count = authuser_count
         self.accounts: Dict[str, Account] = {}
         self.active_id: str = ""
 
@@ -200,12 +201,10 @@ class AccountManager:
 
     def get_target_url(self, account: Optional[Account] = None) -> str:
         acc = account or self.get_active_account()
-        # In single-account mode, preserve clean TARGET_URL without query params for exact route matching.
-        if len(self.accounts) <= 1 and (acc.authuser is None or acc.authuser == 0):
+        if acc.authuser is None or acc.authuser == 0:
             return self.target_base_url
-        if acc.authuser is not None:
-            sep = "&" if "?" in self.target_base_url else "?"
-            return f"{self.target_base_url}{sep}authuser={acc.authuser}"
+        sep = "&" if "?" in self.target_base_url else "?"
+        return f"{self.target_base_url}{sep}authuser={acc.authuser}"
         return self.target_base_url
 
     def mark_rate_limited(self, account_id: Optional[str] = None, reason: str = "quota_exceeded", cooldown_seconds: Optional[float] = None) -> Account:
@@ -235,7 +234,7 @@ class AccountManager:
 
         keys = list(self.accounts.keys())
         if len(keys) <= 1:
-            if curr.authuser == 0:
+            if getattr(self, "authuser_count", 1) > 1 and curr.authuser == 0:
                 candidate_id = "authuser_1"
                 candidate = Account(
                     account_id=candidate_id,

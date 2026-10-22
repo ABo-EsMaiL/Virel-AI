@@ -6,6 +6,7 @@ import logging
 import re
 import time
 import uuid
+from pathlib import Path
 from contextlib import aclosing
 from typing import AsyncGenerator, List, Optional, Union
 from playwright.async_api import async_playwright, BrowserContext, Page, Error as PlaywrightError
@@ -495,14 +496,32 @@ class BrowserPage:
         try:
             from .runtime import account_manager
             target_url = account_manager.get_target_url()
-            await self.page.goto(target_url, timeout=30000, wait_until="domcontentloaded")
+            try:
+                await self.page.goto(target_url, timeout=30000, wait_until="domcontentloaded")
+            except Exception:
+                if target_url != TARGET_URL:
+                    await self.page.goto(TARGET_URL, timeout=30000, wait_until="domcontentloaded")
+                else:
+                    raise
             await dismiss_popups(self.page)
             await self.page.keyboard.press("Escape")
             await self.ensure_model(model_name, output_kind=output_kind)
             if output_kind == 'speech':
                 return self.model_verified
             prompt = self.page.locator('.prompt-box-container textarea, textarea[formcontrolname="promptText"], textarea[aria-label*="prompt" i], textarea[placeholder*="Type" i]').last
-            await prompt.wait_for(state="visible", timeout=8000)
+            try:
+                await prompt.wait_for(state="visible", timeout=8000)
+            except Exception:
+                if target_url != TARGET_URL:
+                    target_url = TARGET_URL
+                    await self.page.goto(target_url, timeout=30000, wait_until="domcontentloaded")
+                    await dismiss_popups(self.page)
+                    await self.page.keyboard.press("Escape")
+                    await self.ensure_model(model_name, output_kind=output_kind)
+                    prompt = self.page.locator('.prompt-box-container textarea, textarea[formcontrolname="promptText"], textarea[aria-label*="prompt" i], textarea[placeholder*="Type" i]').last
+                    await prompt.wait_for(state="visible", timeout=8000)
+                else:
+                    raise
             turns = self.page.locator('ms-chat-turn, .chat-turn-container, .chat-turn, [data-turn-role]')
             if await turns.count() or (await prompt.input_value()).strip():
                 logger.warning("Fresh-chat verification failed; refusing to reuse browser context.")
@@ -513,8 +532,8 @@ class BrowserPage:
             await self.ensure_tools(ENABLE_SEARCH_GROUNDING)
             await self.ensure_url_context()
             return True
-        except Exception:
-            logger.warning("Fresh-chat navigation or prompt verification failed.")
+        except Exception as e:
+            logger.warning("Fresh-chat navigation or prompt verification failed: %s", repr(e))
             return False
 
     # Lifecycle State Constants
@@ -1124,7 +1143,10 @@ class WebHookBrowserManager(BrowserPage):
         from .runtime import account_manager
         target_url = account_manager.get_target_url(new_account)
         logger.info(f"Switching active browser session to {new_account.id} ({new_account.label}) at {target_url}...")
-        if new_account.profile_dir == self.profile_dir and self.page and not self.page.is_closed():
+        if not self.page or self.page.is_closed():
+            self.profile_dir = new_account.profile_dir
+            return
+        if new_account.profile_dir == self.profile_dir:
             await self.page.goto(target_url, timeout=45000, wait_until="domcontentloaded")
             await dismiss_popups(self.page)
             await self.page.keyboard.press("Escape")

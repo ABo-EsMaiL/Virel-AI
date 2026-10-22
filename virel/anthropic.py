@@ -307,7 +307,10 @@ async def messages_response(body,sem,owner,*,desktop=False):
     )
     if is_tool_request(converted):
         visible = loaded_tool_names(body, eager=desktop)
-        plan=prepare_tools(converted,False,visible_tools=visible,allow_image_tool=desktop,allow_media=desktop,allow_voice_tool=desktop)
+        allow_image = desktop or body.get("allow_image_tool", False)
+        allow_voice = desktop or body.get("allow_voice_tool", False)
+        allow_media = desktop or body.get("allow_media", False)
+        plan=prepare_tools(converted,False,visible_tools=visible,allow_image_tool=allow_image,allow_media=allow_media,allow_voice_tool=allow_voice)
         if visible is not None:
             plan["deferred_tools"] = sorted(tool["name"] for tool in body["tools"] if tool.get("defer_loading", False))
         plan["materialize_defaults"]=True
