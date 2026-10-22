@@ -44,11 +44,13 @@ async def debug_state(page_id: str | None = None):
 @router.get("/health")
 async def health_check():
     """Returns gateway status, browser state, and configuration."""
+    from ..runtime import account_manager
     has_session = os.path.exists(SESSION_DATA_PATH)
     return {
         "status": "ok",
         "gateway": "Virel AI (AIStudio Web Hook)",
         "version": "0.1.1",
+        "accounts": account_manager.stats(),
         "browser_ready": browser_manager.is_ready,
         "browser_state_scope": "control_page",
         "requests": browser_manager.stats(),
@@ -70,6 +72,13 @@ async def health_check():
         "port": PORT,
         "rate_limit": RATE_LIMIT
     }
+
+
+@router.get("/accounts", dependencies=[Depends(verify_api_key)])
+async def get_accounts_status():
+    """Returns status, active account, and cooldowns across all configured Google accounts."""
+    from ..runtime import account_manager
+    return account_manager.stats()
 
 
 @router.get("/images/{filename}")

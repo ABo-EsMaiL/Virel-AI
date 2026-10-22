@@ -287,6 +287,20 @@ Defaults:4096input characters,50MiB source/output and600seconds source duration,
 Virel AI is licensed under the [Apache License 2.0](LICENSE). Copyright 2026 Ahmed AbdElHady Esmail; see [NOTICE](NOTICE). Original MSEMAX portions retain their [MIT copyright and license notice](LICENSES/MSEMAX-MIT.txt).
 
 
+## Multi-account quota rotation
+
+When a Google account reaches its AI Studio daily request limit or rate limit, Virel automatically rotates to the next configured Google account without losing client state or requiring a server restart.
+
+Multi-account indexing uses Google's standard `authuser` query parameter (`?authuser=0`, `?authuser=1`, `?authuser=2`...) within the same persistent Chromium profile. Alternatively, independent browser profile directories can be configured.
+
+- Set `VIREL_GOOGLE_ACCOUNTS_COUNT=N` (or `GOOGLE_ACCOUNTS=0,1,2`) in `.env`.
+- Sign into additional accounts using `python get_session.py --authuser 1` (or via browser profile avatar).
+- Configure cooldown via `VIREL_ACCOUNT_COOLDOWN_HOURS` (default: 6 hours).
+- On startup, a pre-flight check selects the earliest available ready account.
+- The gateway never rotates between accounts on every request; an account is rotated only when a daily quota error is detected.
+- Onboarding pop-ups and A/B response rating prompts ("Skip") are dismissed automatically.
+- Check account statuses and cooldown timers via `GET /accounts` (Bearer authenticated) or `/health`.
+
 ## Concurrent requests
 
 One Chromium process/profile hosts independent request pages. Each page has its own model/settings, usage observer and client-tool state. Validated tool results resume their original page; nested ordinary requests can run on other pages. Waiting tool rounds release execution capacity. Completed pages close after response transmission; one control page stays open.

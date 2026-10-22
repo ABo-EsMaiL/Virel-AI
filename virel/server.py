@@ -67,6 +67,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"Default Model: {DEFAULT_MODEL} | Thinking: {THINKING_MODE}")
     logger.info(f"Profile: {CHROME_PROFILE_DIR} | Headless: {HEADLESS}")
     logger.info(f"Port: {PORT} | Max Concurrent: {MAX_CONCURRENT} | Rate Limit: {RATE_LIMIT}")
+    from .runtime import account_manager
+    active_acc = account_manager.get_active_account()
+    logger.info(f"Accounts: {len(account_manager.accounts)} configured | Active: {active_acc.id} ({active_acc.label})")
     logger.info("=" * 65)
     _get_semaphore()
     await asyncio.to_thread(prune_files)

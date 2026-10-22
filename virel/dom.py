@@ -2,8 +2,8 @@
 
 import json
 
-ERROR_SELECTORS = 'mat-snack-bar-container, .toast, [role="alert"], ms-chat-turn .error-message, ms-chat-turn ms-error-chunk'
-ERROR_PATTERN = r"permission denied|internal error|failed to generate|too_many_tool_calls|too many tool calls|quota exceeded|daily limit of requests|rate limit|model (?:isn.t|is not) available right now|model is currently unavailable|model is overloaded|service unavailable|something went wrong"
+ERROR_SELECTORS = 'mat-snack-bar-container, .toast, [role="alert"], ms-chat-turn .error-message, ms-chat-turn ms-error-chunk, .rate-limit-banner, ms-upgrade-card, .upgrade-card'
+ERROR_PATTERN = r"permission denied|internal error|failed to generate|too_many_tool_calls|too many tool calls|quota exceeded|daily limit of requests|rate limit|reached your rate limit|reached your quota|model (?:isn.t|is not) available right now|model is currently unavailable|model is overloaded|service unavailable|something went wrong"
 
 START_ERROR_WATCH = r"""() => {
     window.__virelGenerationErrors?.observer.disconnect();
@@ -90,6 +90,10 @@ FETCH_RESPONSE_STATE = '''(initialCount) => {
             if (bodyTxt.includes('too_many_tool_calls') || bodyTxt.includes('Too many tool calls')) {
                 hasError = true;
                 errorText = 'TOO_MANY_TOOL_CALLS: ' + bodyTxt.slice(0, 500);
+            }
+            if (!hasError && (/reached your rate limit|reached your quota for the day|daily limit of requests/i.test(bodyTxt))) {
+                hasError = true;
+                errorText = 'RATE_LIMIT: ' + bodyTxt.slice(0, 500);
             }
 
             // Count tool call chips in chat turns

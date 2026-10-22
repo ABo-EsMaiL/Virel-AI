@@ -122,7 +122,21 @@ async def checked_stream(prompt, request_id, **options):
                 async for item in stream:
                     current = item.get("text", "") if isinstance(item, dict) else item
                     if isinstance(item, dict) and "error" in item:
-                        raise _browser_error(str(item["error"]))
+                        err_str = str(item["error"])
+                        if any(marker in err_str.lower() for marker in ("quota exceeded", "daily limit of requests", "reached your rate limit", "rate_limit")):
+                            from .runtime import account_manager
+                            rotated = account_manager.rotate_to_next(reason="quota_exceeded")
+                            if rotated:
+                                logger.warning(f"Active account hit daily quota! Auto-rotating to {rotated.id} ({rotated.label})...")
+                                await browser_manager.switch_account(rotated)
+                                options["images"] = sources
+                                async for retry_item in checked_stream(prompt, request_id, **options):
+                                    yield retry_item
+                                return
+                            earliest_secs = account_manager.earliest_reset_seconds()
+                            hrs = earliest_secs / 3600.0
+                            raise GatewayError(429, f"All configured Google accounts have reached their daily quota. Earliest reset in {hrs:.1f} hours; no gateway retry was made.", "upstream_rate_limit")
+                        raise _browser_error(err_str)
                     if isinstance(item, dict):
                         browser_manager.last_finish_reason = item.get("finish_reason", browser_manager.last_finish_reason)
                         has_functions |= bool(item.get("function_calls")) and "function_settings" in options

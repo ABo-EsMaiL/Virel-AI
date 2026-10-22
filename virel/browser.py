@@ -26,6 +26,36 @@ logger = logging.getLogger("virel.webhook")
 
 
 
+async def dismiss_popups(page) -> bool:
+    """Dismiss common onboarding/policy modals and popups in Google AI Studio."""
+    dismissed = False
+    try:
+        selectors = [
+            'button:has-text("Get started")',
+            'button:has-text("Got it")',
+            'button:has-text("Dismiss")',
+            'button:has-text("I agree")',
+            'button:has-text("Accept")',
+            'button:has-text("Continue")',
+            'button:has-text("تخطي")',
+            'button[aria-label="Close"]',
+            'button[aria-label="Dismiss"]',
+            'mat-dialog-container button.close-button',
+            'mat-dialog-actions button',
+            '.welcome-dialog button',
+        ]
+        for sel in selectors:
+            btn = page.locator(sel).first
+            if await btn.count() > 0 and await btn.is_visible():
+                await btn.click(timeout=1000)
+                dismissed = True
+                await asyncio.sleep(0.15)
+        await page.keyboard.press("Escape")
+    except Exception:
+        pass
+    return dismissed
+
+
 class BrowserPage:
     def __init__(self):
         self.request_id = "control"
@@ -463,8 +493,10 @@ class BrowserPage:
         if not self.page or self.page.is_closed() or self.is_shutting_down:
             return False
         try:
-            target_url = TARGET_URL
+            from .runtime import account_manager
+            target_url = account_manager.get_target_url()
             await self.page.goto(target_url, timeout=30000, wait_until="domcontentloaded")
+            await dismiss_popups(self.page)
             await self.page.keyboard.press("Escape")
             await self.ensure_model(model_name, output_kind=output_kind)
             if output_kind == 'speech':
@@ -861,6 +893,18 @@ class BrowserPage:
                     logger.info("Skipped optional response comparison without voting; usage is unavailable for this attempt.")
                     continue
 
+                # General skip button on any comparison or rating dialog
+                skip_btn = self.page.locator('button:has-text("Skip"), button:has-text("تخطي"), [aria-label*="Skip" i]').first
+                if await skip_btn.count() > 0 and await skip_btn.is_visible():
+                    try:
+                        await skip_btn.click(timeout=2000)
+                        self.comparison_skipped = True
+                        stability_start_time = None
+                        logger.info("Clicked 'Skip' on visible response comparison/feedback prompt.")
+                        continue
+                    except Exception:
+                        pass
+
             # Check for fatal or tool call error in AI Studio
             if has_error and not is_running and elapsed > 0.5:
                 err_text = state.get("error_text") or "Google AI Studio encountered an error ('permission denied' / 'internal error')"
@@ -1070,6 +1114,25 @@ class WebHookBrowserManager(BrowserPage):
     def __init__(self):
         super().__init__()
         self.context_closed = False
+        self.profile_dir = CHROME_PROFILE_DIR
+
+    async def switch_account(self, new_account):
+        """Switch active Google account in the browser session."""
+        from .runtime import account_manager
+        target_url = account_manager.get_target_url(new_account)
+        logger.info(f"Switching active browser session to {new_account.id} ({new_account.label}) at {target_url}...")
+        if new_account.profile_dir == self.profile_dir and self.page and not self.page.is_closed():
+            await self.page.goto(target_url, timeout=45000, wait_until="domcontentloaded")
+            await dismiss_popups(self.page)
+            await self.page.keyboard.press("Escape")
+            await self.ensure_model(self.active_model)
+            self.model_catalog_observed = False
+            await self.refresh_model_catalog()
+            logger.info(f"Switched in-place to {new_account.id} successfully.")
+        else:
+            await self.stop()
+            self.profile_dir = new_account.profile_dir
+            await self.start()
 
     def _on_context_closed(self, context):
         if context is self.context:
@@ -1083,7 +1146,8 @@ class WebHookBrowserManager(BrowserPage):
         self.model_catalog = {}
         self.model_catalog_observed = False
         self.catalog_observed_at = 0
-        logger.info(f"Launching persistent Chromium context from: {CHROME_PROFILE_DIR} (headless={HEADLESS}, start-maximized)")
+        prof_dir = getattr(self, "profile_dir", CHROME_PROFILE_DIR)
+        logger.info(f"Launching persistent Chromium context from: {prof_dir} (headless={HEADLESS}, start-maximized)")
         self.playwright = await async_playwright().start()
 
         args = [
@@ -1093,7 +1157,7 @@ class WebHookBrowserManager(BrowserPage):
 
         try:
             self.context = await self.playwright.chromium.launch_persistent_context(
-                user_data_dir=CHROME_PROFILE_DIR,
+                user_data_dir=prof_dir,
                 headless=HEADLESS,
                 no_viewport=True,
                 args=args,
@@ -1110,9 +1174,13 @@ class WebHookBrowserManager(BrowserPage):
 
         self.attach_page_listeners()
 
-        logger.info(f"Navigating to {TARGET_URL} to ensure clean environment...")
+        from .runtime import account_manager
+        active_acc = account_manager.get_active_account()
+        target_url = account_manager.get_target_url(active_acc)
+        logger.info(f"Navigating to {target_url} (account: {active_acc.id} / {active_acc.label}) to ensure clean environment...")
         try:
-            await self.page.goto(TARGET_URL, timeout=60000, wait_until="domcontentloaded")
+            await self.page.goto(target_url, timeout=60000, wait_until="domcontentloaded")
+            await dismiss_popups(self.page)
             await asyncio.sleep(2)
         except Exception as e:
             logger.warning(f"Initial page navigation warning: {e}. Page will be ready on demand.")

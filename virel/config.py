@@ -25,6 +25,25 @@ RATE_LIMIT = os.getenv("VIREL_RATE_LIMIT", "30/minute").strip()
 PORT = int(os.getenv("PORT", "8001"))
 TARGET_URL = "https://aistudio.google.com/prompts/new_chat"
 
+ACCOUNTS_STATE_PATH = os.path.join(RUNTIME_DIR, "accounts_state.json")
+
+raw_profiles = os.getenv("CHROME_PROFILES", "").strip()
+CHROME_PROFILES_LIST = [p.strip() for p in raw_profiles.split(",") if p.strip()] if raw_profiles else None
+if CHROME_PROFILES_LIST:
+    CHROME_PROFILES_LIST = [os.path.normpath(p if os.path.isabs(p) else os.path.join(BASE_DIR, p)) for p in CHROME_PROFILES_LIST]
+
+raw_accounts = os.getenv("GOOGLE_ACCOUNTS", "").strip()
+if raw_accounts:
+    VIREL_GOOGLE_ACCOUNTS_COUNT = len([a for a in raw_accounts.split(",") if a.strip()])
+else:
+    VIREL_GOOGLE_ACCOUNTS_COUNT = int(os.getenv("VIREL_GOOGLE_ACCOUNTS_COUNT", "1"))
+if VIREL_GOOGLE_ACCOUNTS_COUNT < 1:
+    VIREL_GOOGLE_ACCOUNTS_COUNT = 1
+
+VIREL_ACCOUNT_COOLDOWN_HOURS = float(os.getenv("VIREL_ACCOUNT_COOLDOWN_HOURS", "6"))
+VIREL_ACCOUNT_COOLDOWN_SECONDS = max(60.0, VIREL_ACCOUNT_COOLDOWN_HOURS * 3600)
+
+
 
 def positive_setting(name, default):
     value = int(os.getenv(name, str(default)))
