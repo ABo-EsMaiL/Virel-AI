@@ -111,6 +111,7 @@ async def checked_stream(prompt, request_id, **options):
     outcome = "failed"
     try:
         sources = options.pop("images", [])
+        fallback_prompt = options.pop("fallback_prompt", prompt)
         image_sources = [source for source in sources if isinstance(source, str)]
         file_sources = [source for source in sources if isinstance(source, dict)]
         async with prepared_images(image_sources) as image_paths, prepared_file_inputs(file_sources) as file_paths:
@@ -130,7 +131,8 @@ async def checked_stream(prompt, request_id, **options):
                                 logger.warning(f"Active account hit daily quota! Auto-rotating to {rotated.id} ({rotated.label})...")
                                 await browser_manager.switch_account(rotated)
                                 options["images"] = sources
-                                async for retry_item in checked_stream(prompt, request_id, **options):
+                                options["continuation"] = None
+                                async for retry_item in checked_stream(fallback_prompt, request_id, **options):
                                     yield retry_item
                                 return
                             earliest_secs = account_manager.earliest_reset_seconds()

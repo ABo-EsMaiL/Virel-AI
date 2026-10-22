@@ -63,7 +63,7 @@ class ToolRun:
         if self.pending:
             raise GatewayError(429, "The browser is waiting for this agent's function result. Finish that loop or wait for its idle timeout.", "tool_run_busy")
 
-    def remember(self, history, calls, config, anchor="", response_text="", text="", owner="", tool_schemas=None, visibility=None, internal_generated=False):
+    def remember(self, history, calls, config, anchor="", response_text="", text="", owner="", tool_schemas=None, visibility=None, internal_generated=False, image_generated=False, voice_generated=False):
         # Typed dictionary keys are caller data, including a key named tool.
         routing_tools = tuple(name for name, schema in (tool_schemas or {}).items()
                               if "tool" not in schema.get("properties", {}) and
@@ -72,7 +72,8 @@ class ToolRun:
         self.pending = {"prefix": digest(conversation(normalized)), "config": config, "visibility": visibility,
                         "owner": owner, "routing_tools": routing_tools, "instructions": digest(instructions(normalized)),
                         "text": digest(text), "anchor": anchor, "response_hash": digest(response_text),
-                        "deadline": time.monotonic() + self.ttl, "internal_generated": internal_generated,
+                        "deadline": time.monotonic() + self.ttl, "internal_generated": internal_generated or (image_generated and voice_generated),
+                        "image_generated": image_generated, "voice_generated": voice_generated,
                         "calls": [{"id": call["id"], "name": call["function"]["name"],
                                    "arguments_hash": digest(canonical_arguments(call["function"]["name"], call["function"]["arguments"], routing_tools))} for call in calls]}
 
@@ -113,7 +114,10 @@ class ToolRun:
         if owner != self.pending["owner"] or config != self.pending["config"] or prefix != self.pending["prefix"] or supplied != expected or set(results) != set(expected):
             raise GatewayError(409, "Function IDs, previous history, caller or settings do not match the pending round.", "tool_continuation_conflict")
         reply = {"results": [{"call_id": c["id"], "name": c["name"], "output": results[c["id"]]} for c in self.pending["calls"]],
-                 "anchor": self.pending["anchor"], "response_hash": self.pending["response_hash"], "internal_generated": self.pending.get("internal_generated", False)}
+                 "anchor": self.pending["anchor"], "response_hash": self.pending["response_hash"],
+                 "internal_generated": self.pending.get("internal_generated", False),
+                 "image_generated": self.pending.get("image_generated", False),
+                 "voice_generated": self.pending.get("voice_generated", False)}
         if context:
             reply["caller_messages"] = context
         current_instructions = instructions(normalized)
