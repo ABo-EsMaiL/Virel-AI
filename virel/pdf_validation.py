@@ -1,6 +1,13 @@
 """Bounded structural PDF validation in a killable child process."""
 import sys
-from pypdf import PdfReader, apply_configuration
+from pypdf import PdfReader
+try:
+    from pypdf import apply_configuration
+except ImportError:
+    from contextlib import contextmanager
+    @contextmanager
+    def apply_configuration(**kwargs):
+        yield
 
 
 def main(path, max_pages, max_bytes):

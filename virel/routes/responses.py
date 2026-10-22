@@ -57,6 +57,11 @@ async def responses_endpoint(request: Request):
         raise GatewayError(400, "Expected a JSON object.", "invalid_request")
     body = response_metadata(body)
     validate_stream(body, responses=True)
+    model_name = body.get("model") or DEFAULT_MODEL
+    from ..image_agent import is_image_model, handle_responses_image_request
+    catalog = getattr(browser_manager, "model_catalog", {})
+    if is_image_model(model_name, catalog):
+        return await handle_responses_image_request(body, sem)
     if is_tool_request(body):
         return await function_response(body, True, sem, owner=request.headers.get("authorization", ""))
     generation_options = validate_options(body)

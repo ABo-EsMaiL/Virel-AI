@@ -274,17 +274,28 @@ async def messages_response(body,sem,owner,*,desktop=False):
         await require_ready()
         target = desktop_aliases(browser_manager.model_catalog).get(alias)
         if target is None:
-            raise GatewayError(404,"Requested Desktop alias was not observed as available.","model_not_found")
+            if alias in ("claude-3.8-flash-tts", "claude-3.8-flash-lite-tts"):
+                target = alias.replace("claude", "gemini")
+            else:
+                raise GatewayError(404,"Requested Desktop alias was not observed as available.","model_not_found")
         converted["model"] = target
+    from .image_agent import is_image_model, handle_anthropic_image_request
+    catalog = getattr(browser_manager, "model_catalog", {})
+    if is_image_model(converted["model"], catalog):
+        return await handle_anthropic_image_request(body, converted, alias, sem, owner, desktop=desktop)
     identifier="msg_"+uuid.uuid4().hex[:24]
     now=int(time.time())
     logger.info("Messages request %s desktop=%s stream=%s tools=%d deferred=%d max_tokens=%d",
                 identifier, desktop, body.get("stream", False), len(body.get("tools", [])),
                 sum(tool.get("defer_loading", False) for tool in body.get("tools", [])), body["max_tokens"])
     plan=None
+    has_media = any(
+        isinstance(m.get("content"), list) and any(isinstance(p, dict) and p.get("type") in ("image", "document", "image_url", "file") for p in m["content"])
+        for m in converted.get("messages", [])
+    )
     if is_tool_request(converted):
         visible = loaded_tool_names(body, eager=desktop)
-        plan=prepare_tools(converted,False,visible_tools=visible)
+        plan=prepare_tools(converted,False,visible_tools=visible,allow_image_tool=desktop,allow_media=desktop,allow_voice_tool=desktop)
         if visible is not None:
             plan["deferred_tools"] = sorted(tool["name"] for tool in body["tools"] if tool.get("defer_loading", False))
         plan["materialize_defaults"]=True

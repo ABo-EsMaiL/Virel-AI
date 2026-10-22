@@ -1,6 +1,7 @@
 """Faithful caller history and supported media source normalization."""
 
 import json
+import re
 from typing import Any, List, Tuple
 
 from .errors import GatewayError
@@ -8,16 +9,48 @@ from .schemas import ChatMessage
 from .video import is_video_source
 
 
+def strip_large_base64(text: str) -> str:
+    """Sanitize massive inline base64 image URIs in history to protect token budgets."""
+    if not isinstance(text, str):
+        return text
+    if "data:image/" in text and ";base64," in text:
+        return re.sub(r"data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]{50,}", "[embedded image data]", text)
+    return text
+
+
+
 def extract_prompt_and_images(messages: List[ChatMessage]) -> Tuple[str, List[Any]]:
+    import base64
+    from pathlib import Path
     turns, sources = [], []
     has_text = False
+
+    def extract_history_generated_images(text_str):
+        if not isinstance(text_str, str):
+            return
+        matches = re.findall(r"(?:https?://(?:127\.0\.0\.1|localhost):\d+/images/|/images/)?(image_[0-9]+_[0-9a-fA-F]+\.(?:png|jpg|jpeg|webp))", text_str)
+        for fname in matches:
+            p1 = Path("runtime/generated_images") / fname
+            p2 = Path("generated_images") / fname
+            target = p1 if p1.is_file() else (p2 if p2.is_file() else None)
+            if target:
+                try:
+                    raw_bytes = target.read_bytes()
+                    if len(raw_bytes) <= 5 * 1024 * 1024:
+                        b64 = base64.b64encode(raw_bytes).decode("ascii")
+                        uri = f"data:image/png;base64,{b64}"
+                        if uri not in sources and len(sources) < 4:
+                            sources.append(uri)
+                except Exception:
+                    pass
     for message in messages:
         if message.role not in ("system", "developer", "user", "assistant"):
             raise GatewayError(400, "Unsupported message role.", "unsupported_role")
         content = "" if message.content is None else message.content
         text_parts = []
         if isinstance(content, str):
-            text_parts.append(content)
+            extract_history_generated_images(content)
+            text_parts.append(strip_large_base64(content))
             has_text |= bool(content.strip())
         elif isinstance(content, list):
             for part in content:
@@ -26,7 +59,7 @@ def extract_prompt_and_images(messages: List[ChatMessage]) -> Tuple[str, List[An
                 if part.get("type") == "text":
                     if not isinstance(part.get("text"), str):
                         raise GatewayError(400, "Text parts require a string text value.", "invalid_request")
-                    text_parts.append(part["text"])
+                    text_parts.append(strip_large_base64(part["text"]))
                     has_text |= bool(part["text"].strip())
                 elif part.get("type") == "image_url":
                     info = part.get("image_url")

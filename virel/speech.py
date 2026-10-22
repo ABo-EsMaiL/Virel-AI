@@ -62,10 +62,17 @@ READ_SPEECH_OUTPUT = r"""async ({includeData,maxBytes}) => {
     const button=footer?.querySelector('button.ctrl-enter-submits');
     const running=/\b(?:Stop|Cancel)\b/i.test(button?.innerText||'');
     const audios=Array.from(footer?.querySelectorAll('audio')||[]);
+    for(const a of audios) {
+        try {
+            if (!a.muted) a.muted = true;
+            a.volume = 0;
+            if (!a.paused) a.pause();
+        } catch(_) {}
+    }
     if(audios.length>1) return {error:'multiple'};
     const audio=audios[0], src=audio?.currentSrc||audio?.getAttribute('src')||'';
     const ready=Boolean(button) && /\bRun\b/i.test(button.innerText||'') && !running && audios.length===1 && audio.readyState>=2 && Number.isFinite(audio.duration) && audio.duration>0.1;
-    const result={running,ready,identity:src.length+':'+src.slice(-96)+':'+audio?.duration};
+    const result={running,ready,duration:audio?.duration||0,identity:src.length+':'+src.slice(-96)+':'+audio?.duration};
     if(!includeData || !ready) return result;
     const maxEncoded=4*Math.ceil(maxBytes/3)+100;
     if(/^data:audio\/(?:wav|x-wav);base64,/.test(src)) return src.length<=maxEncoded?{...result,data:src}:{error:'too_large'};
@@ -133,9 +140,16 @@ async def generate_in_speech_page(manager, text, model, voice):
         if not await manager.reset_chat_if_needed(model, output_kind='speech') or not manager.model_verified:
             raise GatewayError(503, 'Could not start a fresh verified speech model.', 'model_unavailable')
         create = page.locator('mat-card.create-dialog-card')
-        await create.wait_for(state='visible', timeout=8000)
-        await create.click(timeout=6000)
         editor = page.locator(SPEECH_TEXT)
+        if await editor.count() == 0 or not await editor.first.is_visible():
+            if await create.count() > 0 and await create.first.is_visible():
+                await create.first.click(timeout=6000)
+            else:
+                try:
+                    await create.wait_for(state='visible', timeout=8000)
+                    await create.click(timeout=6000)
+                except Exception:
+                    pass
         await editor.first.wait_for(state='visible', timeout=8000)
         if await editor.count() != 1 or await editor.input_value() or await page.locator('ms-audio-footer audio').count():
             raise GatewayError(503, 'Fresh speech dialog could not be verified.', 'browser_not_ready')
@@ -153,6 +167,10 @@ async def generate_in_speech_page(manager, text, model, voice):
             await asyncio.sleep(.2)
         else:
             raise GatewayError(503, 'Speech Run did not become ready.', 'speech_ui_unavailable')
+        try:
+            await page.evaluate("""() => { const silence = () => { document.querySelectorAll("audio, video").forEach(el => { try { el.muted = true; el.volume = 0; if (!el.paused) el.pause(); } catch(_) {} }); }; silence(); if (!window._virelAudioSilenceObserver) { window._virelAudioSilenceObserver = new MutationObserver(silence); window._virelAudioSilenceObserver.observe(document.body, { childList: true, subtree: true }); } }""")
+        except Exception:
+            pass
         await run.click(timeout=6000)
         start = time.monotonic()
         previous = None
@@ -162,8 +180,9 @@ async def generate_in_speech_page(manager, text, model, voice):
             signature = (state.get('identity'), state.get('ready'), state.get('running'))
             if signature != previous:
                 previous, stable = signature, time.monotonic()
-            # The completed Run can precede the final audio DOM update; 40ms silence is a placeholder.
-            if state.get('ready') and time.monotonic() - stable >= 4:
+            dur = state.get('duration', 0)
+            wait_needed = 0.5 if dur > 0.5 else 1.5
+            if state.get('ready') and time.monotonic() - stable >= wait_needed:
                 final = await read_speech_output(page, True)
                 if final.get('identity') == state['identity'] and final.get('data'):
                     uri = final['data']
