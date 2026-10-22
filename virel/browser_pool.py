@@ -68,6 +68,14 @@ class BrowserPool:
         else:
             object.__delattr__(self, name)
 
+    async def switch_account(self, new_account):
+        """Switch account across current worker scope and underlying browser manager."""
+        scope = self.current
+        if scope and scope.worker and hasattr(scope.worker, "switch_account"):
+            await scope.worker.switch_account(new_account)
+        if hasattr(self._owner, "switch_account"):
+            await self._owner.switch_account(new_account)
+
     def new_scope(self, owner="", needs_page=True):
         return SimpleNamespace(id=uuid.uuid4().hex, owner=digest(owner.split()[-1] if owner.split() else ""),
                                needs_page=needs_page, worker=None, history=None, tool_capable=False,

@@ -496,32 +496,14 @@ class BrowserPage:
         try:
             from .runtime import account_manager
             target_url = account_manager.get_target_url()
-            try:
-                await self.page.goto(target_url, timeout=30000, wait_until="domcontentloaded")
-            except Exception:
-                if target_url != TARGET_URL:
-                    await self.page.goto(TARGET_URL, timeout=30000, wait_until="domcontentloaded")
-                else:
-                    raise
+            await self.page.goto(target_url, timeout=35000, wait_until="domcontentloaded")
             await dismiss_popups(self.page)
             await self.page.keyboard.press("Escape")
             await self.ensure_model(model_name, output_kind=output_kind)
             if output_kind == 'speech':
                 return self.model_verified
             prompt = self.page.locator('.prompt-box-container textarea, textarea[formcontrolname="promptText"], textarea[aria-label*="prompt" i], textarea[placeholder*="Type" i]').last
-            try:
-                await prompt.wait_for(state="visible", timeout=8000)
-            except Exception:
-                if target_url != TARGET_URL:
-                    target_url = TARGET_URL
-                    await self.page.goto(target_url, timeout=30000, wait_until="domcontentloaded")
-                    await dismiss_popups(self.page)
-                    await self.page.keyboard.press("Escape")
-                    await self.ensure_model(model_name, output_kind=output_kind)
-                    prompt = self.page.locator('.prompt-box-container textarea, textarea[formcontrolname="promptText"], textarea[aria-label*="prompt" i], textarea[placeholder*="Type" i]').last
-                    await prompt.wait_for(state="visible", timeout=8000)
-                else:
-                    raise
+            await prompt.wait_for(state="visible", timeout=15000)
             turns = self.page.locator('ms-chat-turn, .chat-turn-container, .chat-turn, [data-turn-role]')
             if await turns.count() or (await prompt.input_value()).strip():
                 logger.warning("Fresh-chat verification failed; refusing to reuse browser context.")
@@ -1131,33 +1113,37 @@ class BrowserPage:
                 self.last_usage.responses() if self.last_usage else 'unavailable')
 
 
+    async def switch_account(self, new_account):
+        """Switch active Google account in this browser page or manager session."""
+        from .runtime import account_manager
+        target_url = account_manager.get_target_url(new_account)
+        logger.info(f"Switching active browser session/page to {new_account.id} ({new_account.label}) at {target_url}...")
+        if not self.page or self.page.is_closed():
+            if hasattr(self, "profile_dir"):
+                self.profile_dir = new_account.profile_dir
+            return
+        current_prof = getattr(self, "profile_dir", getattr(new_account, "profile_dir", None))
+        if new_account.profile_dir == current_prof or not hasattr(self, "stop"):
+            await self.page.goto(target_url, timeout=45000, wait_until="domcontentloaded")
+            await dismiss_popups(self.page)
+            await self.page.keyboard.press("Escape")
+            if getattr(self, "active_model", None):
+                await self.ensure_model(self.active_model)
+            self.model_catalog_observed = False
+            await self.refresh_model_catalog()
+            logger.info(f"Switched page in-place to {new_account.id} successfully.")
+        else:
+            await self.stop()
+            self.profile_dir = new_account.profile_dir
+            await self.start()
+
+
 class WebHookBrowserManager(BrowserPage):
     """Sole persistent Chromium/profile lifecycle owner; request pages never launch it."""
     def __init__(self):
         super().__init__()
         self.context_closed = False
         self.profile_dir = CHROME_PROFILE_DIR
-
-    async def switch_account(self, new_account):
-        """Switch active Google account in the browser session."""
-        from .runtime import account_manager
-        target_url = account_manager.get_target_url(new_account)
-        logger.info(f"Switching active browser session to {new_account.id} ({new_account.label}) at {target_url}...")
-        if not self.page or self.page.is_closed():
-            self.profile_dir = new_account.profile_dir
-            return
-        if new_account.profile_dir == self.profile_dir:
-            await self.page.goto(target_url, timeout=45000, wait_until="domcontentloaded")
-            await dismiss_popups(self.page)
-            await self.page.keyboard.press("Escape")
-            await self.ensure_model(self.active_model)
-            self.model_catalog_observed = False
-            await self.refresh_model_catalog()
-            logger.info(f"Switched in-place to {new_account.id} successfully.")
-        else:
-            await self.stop()
-            self.profile_dir = new_account.profile_dir
-            await self.start()
 
     def _on_context_closed(self, context):
         if context is self.context:

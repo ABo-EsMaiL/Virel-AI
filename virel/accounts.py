@@ -3,8 +3,10 @@
 import json
 import logging
 import os
+import sys
 import time
 from typing import Dict, List, Optional
+from .config import ACCOUNTS_STATE_PATH
 
 logger = logging.getLogger("virel.webhook")
 
@@ -132,6 +134,9 @@ class AccountManager:
 
     def _load_state(self):
         """Restore cooldown and status from runtime JSON file."""
+        if "unittest" in sys.modules or os.environ.get("VIREL_TESTING"):
+            if os.path.abspath(self.state_path) == os.path.abspath(ACCOUNTS_STATE_PATH):
+                return
         if not os.path.isfile(self.state_path):
             return
         try:
@@ -156,6 +161,9 @@ class AccountManager:
 
     def _save_state(self):
         """Persist state to runtime JSON."""
+        if "unittest" in sys.modules or os.environ.get("VIREL_TESTING"):
+            if os.path.abspath(self.state_path) == os.path.abspath(ACCOUNTS_STATE_PATH):
+                return
         try:
             os.makedirs(os.path.dirname(os.path.abspath(self.state_path)), exist_ok=True)
             payload = {
@@ -169,6 +177,16 @@ class AccountManager:
             os.replace(tmp, self.state_path)
         except Exception as e:
             logger.warning(f"Could not save accounts state: {e}")
+
+    def reset_all_cooldowns(self):
+        """Reset cooldown and status on all accounts back to ready."""
+        for acc in self.accounts.values():
+            acc.status = "ready"
+            acc.limited_at = None
+            acc.cooldown_until = None
+        self.active_id = next(iter(self.accounts.keys())) if self.accounts else ""
+        logger.info("All account cooldowns have been reset to ready.")
+        self._save_state()
 
     def _select_startup_account(self):
         """Pre-flight check: Ensure the chosen active account is not rate-limited."""

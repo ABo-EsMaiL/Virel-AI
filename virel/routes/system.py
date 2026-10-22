@@ -81,6 +81,14 @@ async def get_accounts_status():
     return account_manager.stats()
 
 
+@router.post("/accounts/reset", dependencies=[Depends(verify_api_key)])
+async def reset_accounts_status():
+    """Reset cooldown timers and statuses on all accounts back to ready."""
+    from ..runtime import account_manager
+    account_manager.reset_all_cooldowns()
+    return {"message": "All account cooldowns have been reset to ready.", "accounts": account_manager.stats()}
+
+
 @router.get("/images/{filename}")
 @router.get("/claude/images/{filename}")
 async def serve_image(filename: str):
