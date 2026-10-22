@@ -46,6 +46,25 @@ def _load(source):
             name = unquote(Path(urlsplit(source['file_url']).path).name)
         except ValueError:
             raise GatewayError(400, 'Malformed file URL.', 'invalid_file') from None
+    if name is None and keys[0] == 'file_data':
+        value = source['file_data']
+        inferred_ext = '.bin'
+        if value.startswith('data:'):
+            header, _, _ = value.partition(',')
+            mime_part = header[5:].split(';')[0].strip().lower()
+            for ext, (_, mimes) in audio.FORMATS.items():
+                if mime_part in mimes:
+                    inferred_ext = ext
+                    break
+            else:
+                if 'pdf' in mime_part: inferred_ext = '.pdf'
+                elif 'png' in mime_part: inferred_ext = '.png'
+                elif 'jpeg' in mime_part or 'jpg' in mime_part: inferred_ext = '.jpg'
+                elif 'webp' in mime_part: inferred_ext = '.webp'
+                elif 'mp4' in mime_part: inferred_ext = '.mp4'
+                elif 'ogg' in mime_part: inferred_ext = '.ogg'
+                else: inferred_ext = mimetypes.guess_extension(mime_part) or '.bin'
+        name = f'attachment{inferred_ext}'
     files.safe_filename(name, SUPPORTED_EXTENSIONS)
     if keys[0] == 'file_url':
         data = files._fetch_https(source['file_url'], max_bytes=MAX_FILE_BYTES, accept='*/*', kind='file')

@@ -105,7 +105,19 @@ def media_part(part):
         invalid("Unsupported media source; use URL, base64 or text documents.", True)
     if part["type"] == "image":
         return {"type":"image_url","image_url":{"url":uri}}
-    return {"type":"file","file":{("file_data" if kind=="base64" else "file_url"):uri}}
+    ext = ".bin"
+    mt = source.get("media_type", "") if isinstance(source, dict) else ""
+    from . import audio
+    for e, (_, mimes) in audio.FORMATS.items():
+        if mt in mimes:
+            ext = e
+            break
+    else:
+        if "pdf" in mt: ext = ".pdf"
+        elif "image" in mt: ext = ".jpg"
+        elif "video" in mt: ext = ".mp4"
+    filename = part.get("title") or f"attachment{ext}"
+    return {"type":"file","file":{("file_data" if kind=="base64" else "file_url"):uri, "filename": filename}}
 
 def native_history(messages, *, desktop=False):
     if not isinstance(messages,list) or not messages:
@@ -158,7 +170,7 @@ def native_history(messages, *, desktop=False):
                 if part.get("is_error"):
                     result = json.dumps({"is_error":True,"content":result},ensure_ascii=False)
                 history.append({"role":"tool","tool_call_id":part.get("tool_use_id"),"content":result})
-            elif kind in ("image","document") and role == "user":
+            elif kind in ("image","document","audio") and role == "user":
                 if set(part)-{"type","source","cache_control","title","context","citations"}:
                     invalid("Unsupported media block fields.",True)
                 if part.get("citations") is not None and (not isinstance(part["citations"],dict) or part["citations"] != {"enabled":False}):

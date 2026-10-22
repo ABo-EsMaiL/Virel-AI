@@ -235,6 +235,21 @@ class AccountManager:
 
         keys = list(self.accounts.keys())
         if len(keys) <= 1:
+            if curr.authuser == 0:
+                candidate_id = "authuser_1"
+                candidate = Account(
+                    account_id=candidate_id,
+                    profile_dir=curr.profile_dir,
+                    authuser=1,
+                    cooldown_seconds=self.cooldown_seconds,
+                    label="authuser=1",
+                )
+                self.accounts[candidate_id] = candidate
+                self.active_id = candidate.id
+                candidate.last_used_at = now
+                logger.info(f"Auto-expanded and rotated to dynamic account {candidate.id} ({candidate.label})")
+                self._save_state()
+                return candidate
             return None
 
         curr_idx = keys.index(curr.id)

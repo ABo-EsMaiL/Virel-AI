@@ -71,6 +71,25 @@ def extract_prompt_and_images(messages: List[ChatMessage]) -> Tuple[str, List[An
                         raise GatewayError(400, "Only default image detail is supported.", "unsupported_parameter")
                     sources.append(info["url"])
                     text_parts.append(f"[Attached image {len(sources)}]")
+                elif part.get("type") in ("input_audio", "audio_url", "audio"):
+                    if message.role != "user":
+                        raise GatewayError(400, "Audio is accepted only in user messages.", "unsupported_capability")
+                    info = part.get("input_audio") or part.get("audio_url") or part.get("audio") or {}
+                    if isinstance(info, dict):
+                        data = info.get("data")
+                        fmt = info.get("format", "mp3")
+                        url = info.get("url")
+                        if data:
+                            uri = f"data:audio/{fmt};base64,{data}" if not str(data).startswith("data:") else data
+                            sources.append({"filename": f"audio.{fmt}", "file_data": uri})
+                            text_parts.append(f"[Attached audio {len(sources)}]")
+                        elif url:
+                            sources.append({"filename": f"audio.{fmt}", "file_url": url} if url.startswith("http") else {"filename": f"audio.{fmt}", "file_data": url})
+                            text_parts.append(f"[Attached audio {len(sources)}]")
+                        else:
+                            raise GatewayError(400, "Audio source requires data or URL.", "invalid_file")
+                    else:
+                        raise GatewayError(400, "Audio source must be an object.", "invalid_file")
                 elif part.get("type") == "file":
                     info = part.get("file")
                     if message.role != "user":
