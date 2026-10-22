@@ -278,7 +278,7 @@ def _history(body, responses, origins=None, allow_media=False):
     history, pending, wire_names, seen, media_sources = [], {}, {}, set(), []
     instructions = body.get("instructions")
 
-    def extract_images_from_turn(content_text):
+    def extract_media_from_turn(content_text):
         if not isinstance(content_text, str) or not allow_media:
             return
         matches = re.findall(r"(?:https?://(?:127\.0\.0\.1|localhost):\d+/images/|/images/)?(image_[0-9]+_[0-9a-fA-F]+\.(?:png|jpg|jpeg|webp))", content_text)
@@ -294,6 +294,24 @@ def _history(body, responses, origins=None, allow_media=False):
                         uri = f"data:image/png;base64,{b64}"
                         if uri not in media_sources and len(media_sources) < 4:
                             media_sources.append(uri)
+                except Exception:
+                    pass
+        audio_matches = re.findall(r"(?:https?://(?:127\.0\.0\.1|localhost):\d+/audio/|/audio/)?(voice_[0-9]+_[0-9a-fA-F]+\.(?:mp3|wav|ogg|m4a))", content_text)
+        for fname in audio_matches:
+            p1 = Path("runtime/generated_audio") / fname
+            p2 = Path("generated_audio") / fname
+            target = p1 if p1.is_file() else (p2 if p2.is_file() else None)
+            if target:
+                try:
+                    raw_bytes = target.read_bytes()
+                    if len(raw_bytes) <= 25 * 1024 * 1024:
+                        ext = Path(fname).suffix.lower()
+                        mime = "audio/mpeg" if ext == ".mp3" else ("audio/wav" if ext == ".wav" else "audio/ogg")
+                        b64 = base64.b64encode(raw_bytes).decode("ascii")
+                        uri = f"data:{mime};base64,{b64}"
+                        item = {"filename": fname, "file_data": uri}
+                        if not any(isinstance(x, dict) and x.get("filename") == fname for x in media_sources) and len(media_sources) < 4:
+                            media_sources.append(item)
                 except Exception:
                     pass
     if instructions is not None:
@@ -339,7 +357,7 @@ def _history(body, responses, origins=None, allow_media=False):
                 ptype = part.get("type")
                 if ptype in ("text", "input_text", "output_text") and isinstance(part.get("text"), str):
                     text_parts.append(part["text"])
-                elif ptype in ("image_url", "image", "file", "document"):
+                elif ptype in ("image_url", "image", "file", "document", "audio", "input_audio"):
                     if not allow_media:
                         fail("Function requests currently accept text parts only.", unsupported=True)
                     if ptype == "image_url":
@@ -365,12 +383,33 @@ def _history(body, responses, origins=None, allow_media=False):
                             data_uri = f"data:{src.get('media_type', 'application/pdf')};base64,{src.get('data', '')}"
                             media_sources.append({"file_data": data_uri})
                             text_parts.append(f"[Attached document {len(media_sources)}]")
+                    elif ptype == "audio":
+                        src = part.get("source", {})
+                        if isinstance(src, dict) and src.get("type") == "base64":
+                            data_uri = f"data:{src.get('media_type', 'audio/mpeg')};base64,{src.get('data', '')}"
+                            ext = ".mp3"
+                            mt = src.get("media_type", "")
+                            from . import audio as audio_mod
+                            for e, (_, mimes) in audio_mod.FORMATS.items():
+                                if mt in mimes:
+                                    ext = e
+                                    break
+                            fname = part.get("title") or f"audio_{len(media_sources)}{ext}"
+                            media_sources.append({"filename": fname, "file_data": data_uri})
+                            text_parts.append(f"[Attached audio {len(media_sources)}]")
+                    elif ptype == "input_audio":
+                        info = part.get("input_audio", {})
+                        if isinstance(info, dict) and info.get("data"):
+                            fmt = info.get("format", "wav")
+                            data_uri = f"data:audio/{fmt};base64,{info.get('data', '')}"
+                            media_sources.append({"filename": f"audio_{len(media_sources)}.{fmt}", "file_data": data_uri})
+                            text_parts.append(f"[Attached audio {len(media_sources)}]")
                 else:
                     fail("Function requests currently accept text parts only.", unsupported=True)
             content = "\n".join(text_parts)
         if content is None and role == "assistant": content = ""
         if not isinstance(content, str): fail("Message content must be text.")
-        extract_images_from_turn(content)
+        extract_media_from_turn(content)
         turn = {"role": role, "content": strip_large_base64(content)}
         if responses and item.get("phase") is not None:
             if role != "assistant" or item["phase"] not in ("commentary", "final_answer"):
@@ -535,7 +574,10 @@ async def _function_events(plan, options, sem, owner, identifier, now, model, re
                             use_attached = args.get("use_attached_image", False)
                             if not use_attached and plan.get("images") and any(w in prompt_arg.lower() for w in ("image", "photo", "face", "uploaded", "features", "subject", "person", "original", "user", "صورة", "صورتي")):
                                 use_attached = True
-                            sources = plan.get("images", []) if use_attached else []
+                            raw_sources = plan.get("images", []) if use_attached else []
+                            sources = [s for s in raw_sources if isinstance(s, str) or (isinstance(s, dict) and any(s.get("filename", "").lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")))]
+                            if len(raw_sources) > len(sources):
+                                logging.getLogger("virel.webhook").info("Image Chat Bridge filtered %d non-image attachment(s) (audio/docs) since image generation model accepts visual references only.", len(raw_sources) - len(sources))
                             from .image_agent import generate_chat_image
                             img_res = await generate_chat_image(prompt_arg, sources=sources)
                             text = (text + "\n\n" + img_res["text"]).strip() if text else img_res["text"]

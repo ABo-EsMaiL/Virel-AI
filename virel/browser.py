@@ -594,11 +594,13 @@ class BrowserPage:
     async def attach_files(self, paths: List[str]) -> bool:
         """Do not run until all current-request attachment chips are ready."""
         try:
+            file_names = [Path(p).name for p in paths]
+            logger.info("Uploading %d attachment(s) to AI Studio prompt box: %s", len(paths), file_names)
             file_input = self.page.locator('input[type="file"], [data-test-upload-file-input]').first
             await file_input.wait_for(state="attached", timeout=8000)
             await file_input.set_input_files(paths)
             ready = """(expected) => {
-                const selector = '.prompt-media-item-container, .prompt-box-container .file-chip, ms-prompt-box ms-file-chip';
+                const selector = '.prompt-media-item-container, .prompt-box-container .file-chip, ms-prompt-box ms-file-chip, ms-audio-chip, ms-attachment-chip, .file-chip';
                 const chips = Array.from(document.querySelectorAll(selector)).filter(el => !el.parentElement?.closest(selector));
                 const busy = Array.from(document.querySelectorAll('.prompt-box-container [role="progressbar"], ms-prompt-box [role="progressbar"], .prompt-box-container mat-progress-spinner, ms-prompt-box ms-spinner'))
                     .some(el => el.getClientRects().length > 0);
@@ -609,6 +611,7 @@ class BrowserPage:
             deadline = time.monotonic() + self.get_adaptive_timeouts(len(paths))["initial_start_timeout"]
             while time.monotonic() < deadline:
                 if await self.page.evaluate(ready, len(paths)):
+                    logger.info("All %d attachment(s) verified ready in AI Studio prompt box.", len(paths))
                     return True
                 await asyncio.sleep(0.25)
             logger.warning("Media attachment readiness timed out.")
