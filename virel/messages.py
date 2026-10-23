@@ -145,7 +145,17 @@ def responses_messages(body):
             if isinstance(item, str) and not legacy:
                 result.append(ChatMessage(role="user", content=item))
                 continue
-            if not isinstance(item, dict) or item.get("type", "message") != "message":
+            if not isinstance(item, dict):
+                raise GatewayError(400, "Only text message input is supported.", "unsupported_capability")
+            itype = item.get("type", "message")
+            if itype in ("reasoning", "thought"):
+                continue
+            if itype in ("compacted", "compaction", "compaction_summary", "summary"):
+                summary_text = item.get("summary") or item.get("content") or ""
+                if summary_text:
+                    result.append(ChatMessage(role="system", content=f"[Conversation summary: {summary_text}]"))
+                continue
+            if itype != "message":
                 raise GatewayError(400, "Only text message input is supported.", "unsupported_capability")
             role = item.get("role", None if legacy else "user")
             if not isinstance(role, str):
@@ -163,6 +173,8 @@ def responses_messages(body):
                         normalized.append({"type": "image_url", "image_url": {
                             "url": part.get("image_url"), "detail": part.get("detail", "auto")}})
                         continue
+                    if isinstance(part, dict) and part.get("type") in ("thinking", "redacted_thinking", "reasoning", "thought"):
+                        continue
                     if not isinstance(part, dict) or part.get("type") not in ("input_text", "output_text", "text"):
                         raise GatewayError(400, "Unsupported Responses content type.", "unsupported_capability")
                     if not isinstance(part.get("text"), str):
@@ -172,7 +184,7 @@ def responses_messages(body):
             elif not isinstance(content, str):
                 raise GatewayError(400, "Messages require text content.", "invalid_request")
             phase = item.get("phase")
-            if phase is not None and (role != "assistant" or phase not in ("commentary", "final_answer")):
+            if phase is not None and (role != "assistant" or phase not in ("commentary", "final_answer", "reasoning", "thought")):
                 raise GatewayError(400, "Invalid assistant message phase.", "invalid_request")
             result.append(ChatMessage(role=role, content=content, phase=phase))
     else:

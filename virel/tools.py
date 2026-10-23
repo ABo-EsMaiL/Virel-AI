@@ -368,9 +368,20 @@ def _history(body, responses, origins=None, allow_media=False):
     for item in source:
         if not isinstance(item, dict): fail("History items must be objects.")
         kind, role = item.get("type", "message"), item.get("role")
-        if responses and kind == "function_call":
+        if kind in ("reasoning", "thought"):
+            continue
+        if kind in ("compacted", "compaction", "compaction_summary", "summary"):
+            summary_text = ""
+            if "message" in item and isinstance(item["message"], str): summary_text = item["message"]
+            elif "message" in item and isinstance(item["message"], dict): summary_text = item["message"].get("content", "")
+            elif "summary" in item and isinstance(item["summary"], str): summary_text = item["summary"]
+            elif "content" in item and isinstance(item["content"], str): summary_text = item["content"]
+            if summary_text:
+                history.append({"role": "system", "content": f"[Conversation summary: {summary_text}]"})
+            continue
+        if responses and kind in ("function_call", "custom_tool_call"):
             history.append({"role": "assistant", "tool_calls": [call({**item, "id": item.get("call_id")})]}); continue
-        if (responses and kind == "function_call_output") or (not responses and role == "tool"):
+        if (responses and kind in ("function_call_output", "custom_tool_call_output")) or (not responses and role == "tool"):
             call_id = item.get("call_id") if responses else item.get("tool_call_id")
             if not isinstance(call_id, str) or call_id not in pending: fail("Orphan or duplicate function result.")
             expected_name = wire_names[call_id][1] if responses else pending[call_id]
@@ -378,7 +389,9 @@ def _history(body, responses, origins=None, allow_media=False):
             if responses and item.get("namespace") is not None and item["namespace"] != wire_names[call_id][0]:
                 fail("Function result namespace does not match its call.")
             result = item.get("output") if responses else item.get("content")
-            if not isinstance(result, str): fail("Function results must be text.")
+            if isinstance(result, list):
+                result = "\n".join(p.get("text", "") for p in result if isinstance(p, dict) and "text" in p)
+            elif not isinstance(result, str): fail("Function results must be text.")
             history.append({"role": "tool", "tool_call_id": call_id, "name": pending.pop(call_id), "content": result}); continue
         if kind != "message" or role not in ("system", "developer", "user", "assistant"): fail("Only text messages and function history are supported here.", unsupported=True)
         if pending: fail("All function results must precede the next conversational turn.")
@@ -391,6 +404,8 @@ def _history(body, responses, origins=None, allow_media=False):
                 ptype = part.get("type")
                 if ptype in ("text", "input_text", "output_text") and isinstance(part.get("text"), str):
                     text_parts.append(part["text"])
+                elif ptype in ("thinking", "redacted_thinking", "reasoning", "thought"):
+                    continue
                 elif ptype in ("image_url", "image", "file", "document", "audio", "input_audio"):
                     if not allow_media:
                         fail("Function requests currently accept text parts only.", unsupported=True)
@@ -446,7 +461,7 @@ def _history(body, responses, origins=None, allow_media=False):
         extract_media_from_turn(content)
         turn = {"role": role, "content": strip_large_base64(content)}
         if responses and item.get("phase") is not None:
-            if role != "assistant" or item["phase"] not in ("commentary", "final_answer"):
+            if role != "assistant" or item["phase"] not in ("commentary", "final_answer", "reasoning", "thought"):
                 fail("Invalid assistant message phase.")
             turn["phase"] = item["phase"]
         calls = item.get("tool_calls", [])

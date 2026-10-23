@@ -153,7 +153,14 @@ def native_history(messages, *, desktop=False):
                 invalid("Content blocks must be objects.")
             cache_hint(part)
             kind = part.get("type")
-            if kind == "text":
+            if kind in ("thinking", "redacted_thinking"):
+                continue
+            elif kind in ("compaction", "summary"):
+                summary_text = part.get("text") or part.get("summary") or ""
+                if summary_text:
+                    parts.append({"type": "text", "text": f"[Conversation summary: {summary_text}]"})
+                continue
+            elif kind == "text":
                 if set(part)-{"type","text","cache_control"} or not isinstance(part.get("text"),str):
                     invalid("Invalid text block.")
                 parts.append({"type":"text","text":part["text"]})
