@@ -257,8 +257,8 @@ def prepare_tools(body, responses, *, visible_tools=None, allow_image_tool=False
     asks_another_image = any(w in last_lower for w in ("another image", "new image", "different image", "صورة تانية", "صورة جديدة", "صورة أخرى"))
     asks_another_voice = any(w in last_lower for w in ("another voice", "new voice", "different audio", "تسجيل تاني", "صوت جديد", "فويس تاني"))
 
-    active_allow_image = allow_image_tool and (not has_history_image or asks_another_image)
-    active_allow_voice = allow_voice_tool and (not has_history_voice or asks_another_voice)
+    active_allow_image = allow_image_tool
+    active_allow_voice = allow_voice_tool
 
     if active_allow_image and not any(is_client_image_tool(fn) for fn in declarations):
         native_img, validator_img = schema_parts(IMAGE_CREATOR_TOOL_PARAMS)

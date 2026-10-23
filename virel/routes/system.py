@@ -139,6 +139,7 @@ async def serve_audio(filename: str):
 
 
 @router.get("/v1/models", dependencies=[Depends(verify_api_key)])
+@router.get("/models", dependencies=[Depends(verify_api_key)])
 async def list_models(refresh: bool = False):
     """Last complete UI observation; explicit refresh never interrupts generation."""
     from ..errors import GatewayError

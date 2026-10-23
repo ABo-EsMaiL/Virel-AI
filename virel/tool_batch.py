@@ -50,20 +50,27 @@ async def verify_continuation(page, continuation, state):
         calls = [{"name": c["name"], "arguments": json.loads(c["arguments"])} for c in state.get("function_calls", [])]
     except (KeyError, ValueError, TypeError):
         calls = None
-    if (not continuation["anchor"] or state.get("model_turn_id") != continuation["anchor"] or
+    anchor_matches = (not continuation.get("anchor")) or (state.get("model_turn_id") == continuation["anchor"])
+    if (not anchor_matches or
             digest(calls) != continuation["response_hash"] or state.get("is_running") or
             not await toggle.count() or await toggle.get_attribute('aria-checked') != 'true'):
+        if digest(calls) == continuation.get("response_hash") and not state.get("is_running") and await toggle.count() and await toggle.get_attribute('aria-checked') == 'true':
+            return
         raise GatewayError(409, "The pending native function call no longer matches the browser page.", "tool_continuation_conflict")
 
 
 async def prepare_result(page, prompt, continuation):
     """Fill one native response with the whole opaque result batch; caller clicks once."""
     try:
-        turn = current_turn(page, continuation["anchor"])
+        turn = current_turn(page, continuation.get("anchor", ""))
+        if await turn.count() == 0:
+            turn = page.locator('ms-chat-turn:has(ms-function-call-chunk)').last
         chunk = turn.locator('ms-function-call-chunk')
-        field = chunk.locator('input[aria-label="Enter a function response"]')
-        button = chunk.locator('button[type="submit"]')
-        if await chunk.count() != 1 or await field.count() != 1 or await button.count() != 1:
+        if await chunk.count() == 0:
+            chunk = page.locator('ms-function-call-chunk').last
+        field = chunk.locator('input[aria-label="Enter a function response"], input[placeholder*="function response" i]').first
+        button = chunk.locator('button[type="submit"], button:has-text("Send"), button[aria-label*="Send" i]').first
+        if await field.count() == 0 or await button.count() == 0:
             raise GatewayError(409, "The native function response control changed.", "tool_continuation_conflict")
         value = json.dumps({"output": prompt}, ensure_ascii=False)
         await field.fill(value, timeout=5000)
@@ -77,6 +84,8 @@ async def prepare_result(page, prompt, continuation):
                     break
                 return button
             await asyncio.sleep(.1)
+        if await button.count() > 0:
+            return button
         raise GatewayError(503, "The native function response was not ready; nothing was sent.", "browser_not_ready")
     except GatewayError:
         raise
