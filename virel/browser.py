@@ -204,15 +204,15 @@ class BrowserPage:
         self.search_verified = False
         from .config import DEFAULT_SPEECH_MODEL
         target_model = target_model or (DEFAULT_SPEECH_MODEL if output_kind == 'speech' else DEFAULT_MODEL)
+        if not self.page or self.page.is_closed() or self.is_shutting_down:
+            return
+
+        is_speech = (output_kind == 'speech') or target_model.endswith('-tts') or '-tts-' in target_model or (target_model in (DEFAULT_SPEECH_MODEL, 'tts-1', 'tts-1-hd'))
         if target_model and not is_speech:
             from .config import DEFAULT_MODEL
             if target_model.startswith(('gpt-', 'o1', 'o3', 'chatgpt-', 'sol-')):
                 logger.info('Routing external client model alias %s -> %s', target_model, DEFAULT_MODEL)
                 target_model = DEFAULT_MODEL
-        if not self.page or self.page.is_closed() or self.is_shutting_down:
-            return
-
-        is_speech = (output_kind == 'speech') or target_model.endswith('-tts') or '-tts-' in target_model or (target_model in (DEFAULT_SPEECH_MODEL, 'tts-1', 'tts-1-hd'))
 
         # Check if already selected on the page
         control = self.page.locator(MODEL_SELECTOR).first
