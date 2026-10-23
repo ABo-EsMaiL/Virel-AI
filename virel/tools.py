@@ -53,6 +53,8 @@ def is_client_image_tool(tool_dict):
 import json
 import logging
 from contextlib import aclosing
+
+logger = logging.getLogger("virel.webhook")
 import re
 import time
 import uuid
@@ -494,7 +496,9 @@ def validate_calls(calls, plan):
     for call in calls:
         if not isinstance(call, dict): fail("Invalid model function call.", True)
         name = call.get("name")
-        if not isinstance(name, str) or name not in plan["validators"] or (plan["named"] and name != plan["named"]): fail("Model requested an undeclared function.", True)
+        if not isinstance(name, str) or name not in plan["validators"] or (plan["named"] and name != plan["named"]):
+            logger.warning("Model requested undeclared function: %s (declared: %s)", name, list(plan["validators"].keys()))
+            fail("Model requested an undeclared function.", True)
         if plan.get("visible_tools") is not None and name not in plan["visible_tools"]:
             fail("Model requested a deferred function before discovery.", True)
         obj = arguments(call.get("arguments"), True, allow_object=True)
@@ -508,11 +512,11 @@ def validate_calls(calls, plan):
 
 
 async def function_response(body, responses, sem, owner=""):
-    from .config import DEFAULT_MODEL
+    from .config import DEFAULT_MODEL, ENABLE_SERVER_TOOLS
     from .generation import validate_options, require_ready, reasoning_headers
-    allow_image = body.get("allow_image_tool", not responses)
-    allow_voice = body.get("allow_voice_tool", not responses)
-    allow_media = body.get("allow_media", not responses)
+    allow_image = body.get("allow_image_tool", ENABLE_SERVER_TOOLS)
+    allow_voice = body.get("allow_voice_tool", ENABLE_SERVER_TOOLS)
+    allow_media = body.get("allow_media", ENABLE_SERVER_TOOLS)
     plan = prepare_tools(body, responses, allow_image_tool=allow_image, allow_media=allow_media, allow_voice_tool=allow_voice)
     ordinary = {k: v for k, v in body.items() if k not in ("tools", "tool_choice", "parallel_tool_calls", "stream_options")}
     if ordinary.get("text") == {}: ordinary.pop("text")
