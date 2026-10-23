@@ -1163,7 +1163,8 @@ class WebHookBrowserManager(BrowserPage):
 
         args = [
             "--disable-blink-features=AutomationControlled",
-            "--start-maximized"
+            "--start-maximized",
+            "--mute-audio"
         ]
 
         try:
