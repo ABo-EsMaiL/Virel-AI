@@ -368,9 +368,9 @@ def _history(body, responses, origins=None, allow_media=False):
     for item in source:
         if not isinstance(item, dict): fail("History items must be objects.")
         kind, role = item.get("type", "message"), item.get("role")
-        if kind in ("reasoning", "thought"):
+        if kind in ("reasoning", "thought", "subAgentActivity", "sleep", "imageView", "fileChange"):
             continue
-        if kind in ("compacted", "compaction", "compaction_summary", "summary"):
+        if kind in ("compacted", "compaction", "compaction_summary", "summary", "contextCompaction"):
             summary_text = ""
             if "message" in item and isinstance(item["message"], str): summary_text = item["message"]
             elif "message" in item and isinstance(item["message"], dict): summary_text = item["message"].get("content", "")
@@ -379,6 +379,32 @@ def _history(body, responses, origins=None, allow_media=False):
             if summary_text:
                 history.append({"role": "system", "content": f"[Conversation summary: {summary_text}]"})
             continue
+        if kind == "commandExecution":
+            cmd = item.get("command") or ""
+            out = item.get("aggregatedOutput") or ""
+            if cmd or out:
+                history.append({"role": "assistant", "content": f"Executed command: {cmd}\nOutput:\n{out}".strip()})
+            continue
+        if kind == "webSearch":
+            q = item.get("query") or ""
+            res = item.get("results") or ""
+            if q or res:
+                history.append({"role": "assistant", "content": f"Web search: {q}\nResults:\n{res}".strip()})
+            continue
+        if kind == "mcpToolCall":
+            srv, tl = item.get("server") or "", item.get("tool") or ""
+            args = item.get("arguments") or ""
+            res = item.get("result") or item.get("error") or ""
+            history.append({"role": "assistant", "content": f"MCP tool {srv}:{tl}\nResult:\n{res}".strip()})
+            continue
+        if kind == "userMessage":
+            kind = "message"
+            role = "user"
+        elif kind == "agentMessage":
+            kind = "message"
+            role = "assistant"
+            if "text" in item and "content" not in item:
+                item["content"] = item["text"]
         if responses and kind in ("function_call", "custom_tool_call"):
             history.append({"role": "assistant", "tool_calls": [call({**item, "id": item.get("call_id")})]}); continue
         if (responses and kind in ("function_call_output", "custom_tool_call_output")) or (not responses and role == "tool"):
@@ -393,7 +419,15 @@ def _history(body, responses, origins=None, allow_media=False):
                 result = "\n".join(p.get("text", "") for p in result if isinstance(p, dict) and "text" in p)
             elif not isinstance(result, str): fail("Function results must be text.")
             history.append({"role": "tool", "tool_call_id": call_id, "name": pending.pop(call_id), "content": result}); continue
-        if kind != "message" or role not in ("system", "developer", "user", "assistant"): fail("Only text messages and function history are supported here.", unsupported=True)
+        if kind != "message" and not role:
+            continue
+        if role not in ("system", "developer", "user", "assistant"):
+            if role in ("agent", "model", "ai"):
+                role = "assistant"
+            elif role in ("human",):
+                role = "user"
+            else:
+                fail("Only text messages and function history are supported here.", unsupported=True)
         if pending: fail("All function results must precede the next conversational turn.")
         content = item.get("content")
         if isinstance(content, list):

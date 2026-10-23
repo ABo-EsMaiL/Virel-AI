@@ -148,16 +148,46 @@ def responses_messages(body):
             if not isinstance(item, dict):
                 raise GatewayError(400, "Only text message input is supported.", "unsupported_capability")
             itype = item.get("type", "message")
-            if itype in ("reasoning", "thought"):
+            if itype in ("reasoning", "thought", "subAgentActivity", "sleep", "imageView", "fileChange"):
                 continue
-            if itype in ("compacted", "compaction", "compaction_summary", "summary"):
+            if itype in ("compacted", "compaction", "compaction_summary", "summary", "contextCompaction"):
                 summary_text = item.get("summary") or item.get("content") or ""
                 if summary_text:
                     result.append(ChatMessage(role="system", content=f"[Conversation summary: {summary_text}]"))
                 continue
+            if itype == "commandExecution":
+                cmd = item.get("command") or ""
+                out = item.get("aggregatedOutput") or ""
+                if cmd or out:
+                    result.append(ChatMessage(role="assistant", content=f"Executed command: {cmd}\nOutput:\n{out}".strip()))
+                continue
+            if itype == "webSearch":
+                q = item.get("query") or ""
+                res = item.get("results") or ""
+                if q or res:
+                    result.append(ChatMessage(role="assistant", content=f"Web search: {q}\nResults:\n{res}".strip()))
+                continue
+            if itype == "mcpToolCall":
+                srv, tl = item.get("server") or "", item.get("tool") or ""
+                res = item.get("result") or item.get("error") or ""
+                result.append(ChatMessage(role="assistant", content=f"MCP tool {srv}:{tl}\nResult:\n{res}".strip()))
+                continue
+            if itype == "userMessage":
+                itype = "message"
+                item["role"] = "user"
+            elif itype == "agentMessage":
+                itype = "message"
+                item["role"] = "assistant"
+                if "text" in item and "content" not in item:
+                    item["content"] = item["text"]
             if itype != "message":
-                raise GatewayError(400, "Only text message input is supported.", "unsupported_capability")
+                if not item.get("role"):
+                    continue
             role = item.get("role", None if legacy else "user")
+            if role in ("agent", "model", "ai"):
+                role = "assistant"
+            elif role in ("human",):
+                role = "user"
             if not isinstance(role, str):
                 raise GatewayError(400, "Messages require a text role.", "invalid_request")
             content = item.get("content", "")
