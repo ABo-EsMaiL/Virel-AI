@@ -53,7 +53,7 @@ def validate_options(body):
     if reasoning is not None:
         if not isinstance(reasoning, dict):
             raise GatewayError(400, "reasoning must be an object.", "invalid_request")
-        if set(reasoning) - {"effort", "summary"} or reasoning.get("summary") not in (None, "none", "auto"):
+        if set(reasoning) - {"effort", "summary"} or reasoning.get("summary") not in (None, "none", "auto", "concise", "detailed"):
             raise GatewayError(400, "Reasoning summaries and budgets are not implemented.", "unsupported_parameter")
         nested = reasoning.get("effort")
         if effort is not None and nested is not None and effort != nested:
