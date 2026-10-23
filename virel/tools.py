@@ -400,6 +400,8 @@ def _history(body, responses, origins=None, allow_media=False):
         if kind == "userMessage":
             kind = "message"
             role = "user"
+            if "text" in item and "content" not in item:
+                item["content"] = item["text"]
         elif kind == "agentMessage":
             kind = "message"
             role = "assistant"
@@ -430,16 +432,39 @@ def _history(body, responses, origins=None, allow_media=False):
                 fail("Only text messages and function history are supported here.", unsupported=True)
         if pending: fail("All function results must precede the next conversational turn.")
         content = item.get("content")
+        if content is None and "text" in item:
+            content = item["text"]
+        if isinstance(content, dict):
+            content = content.get("text") or content.get("content") or ""
+        if content is None:
+            content = ""
         if isinstance(content, list):
             text_parts = []
             for part in content:
+                if isinstance(part, str):
+                    text_parts.append(part)
+                    continue
                 if not isinstance(part, dict):
-                    fail("Content parts must be objects.")
+                    continue
                 ptype = part.get("type")
                 if ptype in ("text", "input_text", "output_text") and isinstance(part.get("text"), str):
                     text_parts.append(part["text"])
                 elif ptype in ("thinking", "redacted_thinking", "reasoning", "thought"):
                     continue
+                elif ptype == "localImage":
+                    from pathlib import Path
+                    img_path = part.get("path")
+                    if allow_media and img_path and Path(img_path).is_file():
+                        import base64
+                        mime = "image/png"
+                        if img_path.lower().endswith((".jpg", ".jpeg")): mime = "image/jpeg"
+                        elif img_path.lower().endswith(".webp"): mime = "image/webp"
+                        data_uri = f"data:{mime};base64,{base64.b64encode(Path(img_path).read_bytes()).decode('ascii')}"
+                        media_sources.append(data_uri)
+                        text_parts.append(f"[Attached image {len(media_sources)}]")
+                    else:
+                        name = Path(img_path).name if img_path else "image"
+                        text_parts.append(f"[Attached image: {name}]")
                 elif ptype in ("image_url", "image", "file", "document", "audio", "input_audio"):
                     if not allow_media:
                         fail("Function requests currently accept text parts only.", unsupported=True)
@@ -490,8 +515,8 @@ def _history(body, responses, origins=None, allow_media=False):
                 else:
                     fail("Function requests currently accept text parts only.", unsupported=True)
             content = "\n".join(text_parts)
-        if content is None and role == "assistant": content = ""
-        if not isinstance(content, str): fail("Message content must be text.")
+        if not isinstance(content, str):
+            content = str(content) if content is not None else ""
         extract_media_from_turn(content)
         turn = {"role": role, "content": strip_large_base64(content)}
         if responses and item.get("phase") is not None:

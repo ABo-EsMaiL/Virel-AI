@@ -175,6 +175,8 @@ def responses_messages(body):
             if itype == "userMessage":
                 itype = "message"
                 item["role"] = "user"
+                if "text" in item and "content" not in item:
+                    item["content"] = item["text"]
             elif itype == "agentMessage":
                 itype = "message"
                 item["role"] = "assistant"
@@ -190,10 +192,35 @@ def responses_messages(body):
                 role = "user"
             if not isinstance(role, str):
                 raise GatewayError(400, "Messages require a text role.", "invalid_request")
-            content = item.get("content", "")
+            content = item.get("content")
+            if content is None and "text" in item:
+                content = item["text"]
+            if isinstance(content, dict):
+                content = content.get("text") or content.get("content") or ""
+            if content is None:
+                content = ""
             if isinstance(content, list) and not legacy:
                 normalized = []
                 for part in content:
+                    if isinstance(part, str):
+                        normalized.append({"type": "text", "text": part})
+                        continue
+                    if not isinstance(part, dict):
+                        continue
+                    if part.get("type") == "localImage":
+                        from pathlib import Path
+                        img_path = part.get("path")
+                        if img_path and Path(img_path).is_file():
+                            import base64
+                            mime = "image/png"
+                            if img_path.lower().endswith((".jpg", ".jpeg")): mime = "image/jpeg"
+                            elif img_path.lower().endswith(".webp"): mime = "image/webp"
+                            b64 = base64.b64encode(Path(img_path).read_bytes()).decode("ascii")
+                            normalized.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "auto"}})
+                        else:
+                            name = Path(img_path).name if img_path else "image"
+                            normalized.append({"type": "text", "text": f"[Attached image: {name}]"})
+                        continue
                     if isinstance(part, dict) and part.get("type") == "input_file":
                         normalized.append({"type": "file", "file": {key: value for key, value in part.items() if key != "type"}})
                         continue
