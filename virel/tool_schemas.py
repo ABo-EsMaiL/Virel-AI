@@ -142,9 +142,9 @@ def project_schema(schema):
         if "$ref" in node:
             ref=node["$ref"]
             if ref in refs: fail("Recursive function schema references are unavailable.")
-            if set(node)-{"$ref","description","title","default","examples","example","$comment","format","id","$id","deprecated","readOnly","writeOnly"}:
+            if set(node)-{"$ref","type","description","title","default","examples","example","$comment","format","id","$id","deprecated","readOnly","writeOnly"}:
                 fail("Local references accept annotation siblings only.")
-            result=compile(target(ref),depth+1,refs+(ref,),hint)
+            result=compile(target(ref),depth+1,refs+(ref,),node.get("type",hint))
             if "description" in node:
                 result.native={**result.native,"description":node["description"]}
             return result
@@ -155,12 +155,23 @@ def project_schema(schema):
             if unions:
                 branches=node[unions[0]]
                 if not isinstance(branches,list) or not branches: fail("Schema union requires nonempty branches.")
-                structural = {k: v for k, v in node.items() if k in ("properties", "required", "additionalProperties", "items")}
+                structural = {}
+                if node.get("properties"): structural["properties"] = node["properties"]
+                if node.get("required"): structural["required"] = node["required"]
+                if "additionalProperties" in node and node["additionalProperties"] is not True:
+                    structural["additionalProperties"] = node["additionalProperties"]
+                if "items" in node: structural["items"] = node["items"]
                 if structural:
                     new_branches = []
                     for branch in branches:
                         if isinstance(branch, dict):
-                            merged = dict(branch)
+                            if "$ref" in branch:
+                                merged = dict(target(branch["$ref"]))
+                                for k, v in branch.items():
+                                    if k != "$ref":
+                                        merged[k] = v
+                            else:
+                                merged = dict(branch)
                             if "properties" in structural:
                                 base_props = dict(structural["properties"])
                                 base_props.update(merged.get("properties", {}))
