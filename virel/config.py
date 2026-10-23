@@ -21,6 +21,7 @@ ENABLE_SEARCH_GROUNDING = os.getenv("ENABLE_SEARCH_GROUNDING", "false").lower() 
 ENABLE_URL_CONTEXT = os.getenv("ENABLE_URL_CONTEXT", "true").lower() in ("true", "1", "yes")
 PRESERVE_MARKDOWN = os.getenv("VIREL_PRESERVE_MARKDOWN", "false").lower() in ("true", "1", "yes")
 RATE_LIMIT = os.getenv("VIREL_RATE_LIMIT", "30/minute").strip()
+ENABLE_SERVER_TOOLS = os.getenv("VIREL_ENABLE_SERVER_TOOLS", "true").lower() in ("true", "1", "yes")
 
 PORT = int(os.getenv("PORT", "8001"))
 TARGET_URL = "https://aistudio.google.com/prompts/new_chat"

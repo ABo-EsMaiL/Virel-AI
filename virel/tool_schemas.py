@@ -8,7 +8,7 @@ KEYS={"type","properties","required","items","description","enum","additionalPro
       "minimum","maximum","exclusiveMinimum","exclusiveMaximum","minLength","maxLength",
       "minItems","maxItems","minProperties","maxProperties","$schema","title","default",
       "anyOf","oneOf","const","$defs","definitions","$ref","examples","example","$comment",
-      "deprecated","readOnly","writeOnly","pattern","propertyNames","format"}
+      "deprecated","readOnly","writeOnly","pattern","propertyNames","format","id","$id"}
 TYPES={"object","array","string","number","integer","boolean","null"}
 logger = logging.getLogger("virel.webhook")
 DIAGNOSTIC_KEYWORDS = {"format", "allOf", "not", "if", "then", "else", "uniqueItems", "multipleOf",
@@ -142,9 +142,9 @@ def project_schema(schema):
         if "$ref" in node:
             ref=node["$ref"]
             if ref in refs: fail("Recursive function schema references are unavailable.")
-            if set(node)-{"$ref","description","title","default","examples","example","$comment","format"}:
+            if set(node)-{"$ref","type","description","title","default","examples","example","$comment","format","id","$id","deprecated","readOnly","writeOnly"}:
                 fail("Local references accept annotation siblings only.")
-            result=compile(target(ref),depth+1,refs+(ref,),hint)
+            result=compile(target(ref),depth+1,refs+(ref,),node.get("type",hint))
             if "description" in node:
                 result.native={**result.native,"description":node["description"]}
             return result
@@ -153,10 +153,50 @@ def project_schema(schema):
         if len(unions)>1: fail("A schema node may contain one union operator.")
         if unions or isinstance(kinds,list):
             if unions:
-                if set(node)-{unions[0],"type","description","title","default","examples","example","$comment","$schema","$defs","definitions","format"}:
-                    fail("Union structural siblings are unavailable; keep them inside each branch.")
                 branches=node[unions[0]]
                 if not isinstance(branches,list) or not branches: fail("Schema union requires nonempty branches.")
+                structural = {}
+                if node.get("properties"): structural["properties"] = node["properties"]
+                if node.get("required"): structural["required"] = node["required"]
+                if "additionalProperties" in node and node["additionalProperties"] is not True:
+                    structural["additionalProperties"] = node["additionalProperties"]
+                if "items" in node: structural["items"] = node["items"]
+                if structural:
+                    new_branches = []
+                    for branch in branches:
+                        if isinstance(branch, dict):
+                            if "$ref" in branch:
+                                merged = dict(target(branch["$ref"]))
+                                for k, v in branch.items():
+                                    if k != "$ref":
+                                        merged[k] = v
+                            else:
+                                merged = dict(branch)
+                            if "properties" in structural:
+                                base_props = dict(structural["properties"])
+                                base_props.update(merged.get("properties", {}))
+                                merged["properties"] = base_props
+                                if "type" not in merged and "type" in node:
+                                    merged["type"] = node["type"]
+                            if "required" in structural:
+                                base_req = list(dict.fromkeys(list(structural["required"]) + list(merged.get("required", []))))
+                                merged["required"] = base_req
+                            if "additionalProperties" in structural and "additionalProperties" not in merged:
+                                merged["additionalProperties"] = structural["additionalProperties"]
+                            if "items" in structural and "items" not in merged:
+                                merged["items"] = structural["items"]
+                            new_branches.append(merged)
+                        else:
+                            new_branches.append(branch)
+                    branches = new_branches
+
+                non_structural = set(node) - {unions[0], "type", "description", "title", "default", "examples", "example",
+                                              "$comment", "$schema", "$defs", "definitions", "format", "id", "$id",
+                                              "deprecated", "readOnly", "writeOnly",
+                                              "properties", "required", "additionalProperties", "items"}
+                if non_structural:
+                    logger.warning("Union structural siblings found: %s in node keys: %s", non_structural, list(node.keys()))
+                    fail("Union structural siblings are unavailable; keep them inside each branch.")
                 choices=[compile(branch,depth+1,refs,kinds if isinstance(kinds,str) else hint) for branch in branches]
             else:
                 if not kinds or len(set(kinds))!=len(kinds) or any(kind not in TYPES for kind in kinds):

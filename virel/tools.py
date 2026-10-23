@@ -53,6 +53,8 @@ def is_client_image_tool(tool_dict):
 import json
 import logging
 from contextlib import aclosing
+
+logger = logging.getLogger("virel.webhook")
 import re
 import time
 import uuid
@@ -202,10 +204,12 @@ def prepare_tools(body, responses, *, visible_tools=None, allow_image_tool=False
         fail("parallel_tool_calls must be boolean.")
     tools = body.get("tools", [])
     if not isinstance(tools, list): fail("tools must be an array.")
+    logging.getLogger("virel.webhook").info("Incoming tools types: %s", [t.get("type") if isinstance(t, dict) else type(t) for t in tools])
     tools, bindings = namespace_functions(tools) if responses else (tools, {})
+    tools = [t for t in tools if not (responses and isinstance(t, dict) and t.get("type") == "web_search")]
     definitions, declarations = {}, []
     for tool_index, tool in enumerate(tools):
-        if not isinstance(tool, dict) or tool.get("type") != "function": fail("Only client-owned function tools are supported.", unsupported=True)
+        if not isinstance(tool, dict) or tool.get("type") != "function": logging.getLogger("virel.webhook").warning("Unsupported tool item: %s", tool); fail("Only client-owned function tools are supported.", unsupported=True)
         if not responses and set(tool) != {"type", "function"}: fail("Invalid Chat function declaration.")
         fn = {k: v for k, v in tool.items() if k != "type"} if responses else tool.get("function")
         if not isinstance(fn, dict) or set(fn) - {"name", "description", "parameters", "strict"}: fail("Unsupported function declaration fields.", unsupported=True)
@@ -216,8 +220,8 @@ def prepare_tools(body, responses, *, visible_tools=None, allow_image_tool=False
         if not isinstance(description, str): fail("Function description must be text.")
         try:
             native, validator = schema_parts(fn.get("parameters", {"type": "object", "properties": {}}))
-        except GatewayError:
-            logging.getLogger("virel.webhook").warning("Function declaration rejected index=%d", tool_index)
+        except GatewayError as err:
+            logging.getLogger("virel.webhook").warning("Function declaration rejected index=%d name=%s error=%s schema=%s", tool_index, name, getattr(err, "detail", str(err)), fn.get("parameters"))
             raise
         definitions[name] = validator
         declarations.append({"name": name, "description": description, "parameters": native})
@@ -492,7 +496,9 @@ def validate_calls(calls, plan):
     for call in calls:
         if not isinstance(call, dict): fail("Invalid model function call.", True)
         name = call.get("name")
-        if not isinstance(name, str) or name not in plan["validators"] or (plan["named"] and name != plan["named"]): fail("Model requested an undeclared function.", True)
+        if not isinstance(name, str) or name not in plan["validators"] or (plan["named"] and name != plan["named"]):
+            logger.warning("Model requested undeclared function: %s (declared: %s)", name, list(plan["validators"].keys()))
+            fail("Model requested an undeclared function.", True)
         if plan.get("visible_tools") is not None and name not in plan["visible_tools"]:
             fail("Model requested a deferred function before discovery.", True)
         obj = arguments(call.get("arguments"), True, allow_object=True)
@@ -506,11 +512,11 @@ def validate_calls(calls, plan):
 
 
 async def function_response(body, responses, sem, owner=""):
-    from .config import DEFAULT_MODEL
+    from .config import DEFAULT_MODEL, ENABLE_SERVER_TOOLS
     from .generation import validate_options, require_ready, reasoning_headers
-    allow_image = body.get("allow_image_tool", not responses)
-    allow_voice = body.get("allow_voice_tool", not responses)
-    allow_media = body.get("allow_media", not responses)
+    allow_image = body.get("allow_image_tool", ENABLE_SERVER_TOOLS)
+    allow_voice = body.get("allow_voice_tool", ENABLE_SERVER_TOOLS)
+    allow_media = body.get("allow_media", ENABLE_SERVER_TOOLS)
     plan = prepare_tools(body, responses, allow_image_tool=allow_image, allow_media=allow_media, allow_voice_tool=allow_voice)
     ordinary = {k: v for k, v in body.items() if k not in ("tools", "tool_choice", "parallel_tool_calls", "stream_options")}
     if ordinary.get("text") == {}: ordinary.pop("text")
