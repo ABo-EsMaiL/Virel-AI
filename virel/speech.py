@@ -173,18 +173,11 @@ async def generate_in_speech_page(manager, text, model, voice):
             pass
         await run.click(timeout=6000)
         start = time.monotonic()
-        previous = None
-        stable = start
         while time.monotonic() - start < 1200:
             state = await read_speech_output(page)
-            signature = (state.get('identity'), state.get('ready'), state.get('running'))
-            if signature != previous:
-                previous, stable = signature, time.monotonic()
-            dur = state.get('duration', 0)
-            wait_needed = 0.5 if dur > 0.5 else 1.5
-            if state.get('ready') and time.monotonic() - stable >= wait_needed:
+            if state.get('ready'):
                 final = await read_speech_output(page, True)
-                if final.get('identity') == state['identity'] and final.get('data'):
+                if final.get('data'):
                     uri = final['data']
                     if not re.fullmatch(r'data:audio/(?:wav|x-wav);base64,[A-Za-z0-9+/=]+', uri):
                         raise GatewayError(502, 'Invalid generated speech encoding.', 'upstream_audio_asset')
@@ -198,7 +191,7 @@ async def generate_in_speech_page(manager, text, model, voice):
                     return data
             if time.monotonic() - start > 180 and not state.get('running') and not state.get('ready'):
                 raise GatewayError(502, 'AI Studio returned no complete speech audio.', 'upstream_no_audio')
-            await asyncio.sleep(.25)
+            await asyncio.sleep(.2)
         raise GatewayError(504, 'AI Studio speech generation timed out.', 'upstream_timeout')
     except GatewayError:
         raise

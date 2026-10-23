@@ -492,7 +492,14 @@ class BrowserPage:
     async def reset_chat_if_needed(self, model_name: Optional[str] = None, output_kind="text") -> bool:
         """Never replay caller history into a retained browser conversation."""
         if not self.page or self.page.is_closed() or self.is_shutting_down:
-            return False
+            if self.context and not getattr(self, "context_closed", False) and not self.is_shutting_down:
+                try:
+                    self.page = await self.context.new_page()
+                    self.attach_page_listeners()
+                except Exception:
+                    return False
+            else:
+                return False
         try:
             from .runtime import account_manager
             target_url = account_manager.get_target_url()
@@ -515,6 +522,13 @@ class BrowserPage:
             await self.ensure_url_context()
             return True
         except Exception as e:
+            if ("target" in str(e).lower() or "closed" in str(e).lower()) and self.context and not getattr(self, "context_closed", False) and not self.is_shutting_down:
+                try:
+                    self.page = await self.context.new_page()
+                    self.attach_page_listeners()
+                    return await self.reset_chat_if_needed(model_name=model_name, output_kind=output_kind)
+                except Exception:
+                    pass
             logger.warning("Fresh-chat navigation or prompt verification failed: %s", repr(e))
             return False
 

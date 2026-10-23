@@ -607,6 +607,7 @@ async def _function_events(plan, options, sem, owner, identifier, now, model, re
                 image_calls = [c for c in calls if c.get("function", {}).get("name") == IMAGE_CREATOR_TOOL_NAME]
                 voice_calls = [c for c in calls if c.get("function", {}).get("name") == VOICE_GENERATOR_TOOL_NAME]
                 client_calls = [c for c in calls if c.get("function", {}).get("name") not in (IMAGE_CREATOR_TOOL_NAME, VOICE_GENERATOR_TOOL_NAME)]
+                internal_results = []
                 if image_calls:
                     if not image_done:
                         for img_call in image_calls:
@@ -624,6 +625,11 @@ async def _function_events(plan, options, sem, owner, identifier, now, model, re
                             img_res = await generate_chat_image(prompt_arg, sources=sources)
                             text = (text + "\n\n" + img_res["text"]).strip() if text else img_res["text"]
                             image_done = True
+                            internal_results.append({
+                                "call_id": img_call["id"],
+                                "name": IMAGE_CREATOR_TOOL_NAME,
+                                "output": json.dumps({"status": "success", "file_path": img_res["posix_path"], "url": img_res["img_url"]})
+                            })
                     else:
                         logging.getLogger("virel.webhook").info("Image already generated in this turn sequence; suppressing loop call.")
                 if voice_calls:
@@ -637,9 +643,61 @@ async def _function_events(plan, options, sem, owner, identifier, now, model, re
                             voice_res = await generate_chat_voice(v_text, voice=v_voice)
                             text = (text + "\n\n" + voice_res["text"]).strip() if text else voice_res["text"]
                             voice_done = True
+                            internal_results.append({
+                                "call_id": v_call["id"],
+                                "name": VOICE_GENERATOR_TOOL_NAME,
+                                "output": json.dumps({"status": "success", "file_path": voice_res["posix_path"], "url": voice_res["audio_url"]})
+                            })
                     else:
                         logging.getLogger("virel.webhook").info("Voice already generated in this turn sequence; suppressing loop call.")
                 calls = client_calls
+                if not calls and internal_results and getattr(browser_manager, "last_batch_turn", None):
+                    int_continuation = {
+                        "anchor": browser_manager.last_batch_turn,
+                        "response_hash": digest([{"name": BATCH_NAME, "arguments": native_envelope}]),
+                        "results": internal_results,
+                        "internal_generated": (image_done and voice_done),
+                        "image_generated": image_done,
+                        "voice_generated": voice_done
+                    }
+                    notice = "\nNotice: Requested media (image/voice) has been generated and saved locally. Their exact file paths are provided in the tool results above. Proceed to fulfill any remaining user instructions (such as saving to desktop or calling client tools) or provide your final response text."
+                    int_prompt = json.dumps({"tool_results": internal_results, "caller_instructions": notice}, ensure_ascii=False)
+                    try:
+                        next_raw_calls = []
+                        next_envelope = None
+                        next_text = ""
+                        async with aclosing(checked_stream(
+                            int_prompt, identifier + "-int", model_name=model,
+                            function_settings=batch_declaration(plan["declarations"]),
+                            continuation=int_continuation,
+                            enable_search=False if plan["declarations"] else None,
+                            images=plan.get("images", []),
+                            fallback_prompt=plan["prompt"],
+                            **options
+                        )) as source:
+                            async for item in source:
+                                if live:
+                                    next_text, delta = read_text(item, next_text)
+                                else:
+                                    next_text = item.get("text", next_text) if isinstance(item, dict) else next_text + item
+                                    delta = ""
+                                if isinstance(item, dict):
+                                    next_raw_calls = item.get("function_calls", next_raw_calls)
+                                if delta:
+                                    yield {"delta": delta, "model": response_model(model)}
+                        if next_raw_calls:
+                            if len(next_raw_calls) == 1 and next_raw_calls[0].get("name") == BATCH_NAME:
+                                next_envelope = arguments(next_raw_calls[0].get("arguments"), upstream=True, maximum=MAX_REQUEST_BYTES)
+                                if set(next_envelope) == {"calls"} and next_envelope["calls"]:
+                                    next_calls = validate_calls(unpack_calls(next_envelope["calls"]), plan)
+                                    next_client_calls = [c for c in next_calls if c.get("function", {}).get("name") not in (IMAGE_CREATOR_TOOL_NAME, VOICE_GENERATOR_TOOL_NAME)]
+                                    if next_client_calls:
+                                        calls = next_client_calls
+                                        native_envelope = next_envelope
+                        if next_text.strip():
+                            text = (text + "\n\n" + next_text.strip()).strip()
+                    except Exception as cont_err:
+                        logging.getLogger("virel.webhook").warning("Internal tool continuation in browser page failed: %s", cont_err)
                 if not calls and not text.strip() and browser_manager.last_finish_reason != "max_tokens":
                     fail("AI Studio returned no final text or native client-tool calls.", True)
                 if calls:
@@ -649,7 +707,8 @@ async def _function_events(plan, options, sem, owner, identifier, now, model, re
                         visibility=digest(plan["declarations"]),
                         internal_generated=(image_done and voice_done),
                         image_generated=image_done,
-                        voice_generated=voice_done)
+                        voice_generated=voice_done,
+                        internal_results=internal_results)
             except BaseException:
                 browser_manager.tool_run.clear()
                 raise

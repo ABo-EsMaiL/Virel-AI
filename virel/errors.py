@@ -1,6 +1,9 @@
 """Client-readable gateway failures shared by HTTP adapters."""
+import logging
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger("virel.webhook")
 
 
 class GatewayError(HTTPException):
@@ -23,6 +26,7 @@ def provider_error(exc):
 
 
 async def http_error_handler(request, exc):
+    logger.warning("HTTP %d error on %s: %s", exc.status_code, request.scope.get("path"), getattr(exc, "detail", str(exc)))
     if request.scope.get("path", "").startswith(("/v1/messages", "/claude/v1/messages")):
         from .anthropic import native_error
         return JSONResponse(native_error(exc), status_code=exc.status_code, headers=exc.headers)
