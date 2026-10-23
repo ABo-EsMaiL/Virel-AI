@@ -135,7 +135,7 @@ FETCH_RESPONSE_STATE = '''(initialCount) => {
                 const role = (t.getAttribute('data-turn-role') || '').toLowerCase();
                 const cls = (t.className || (t.getAttribute('class') || '')).toLowerCase();
                 if (role === 'model' || cls.includes('model')) return true;
-                return Boolean(t.querySelector('ms-thought-chunk, .thought-activity-host, [aria-label*="thumb" i], [aria-label*="Good response" i], [aria-label*="Bad response" i]'));
+                return Boolean(t.querySelector('ms-thought-chunk, .thought-activity-host, ms-function-call-chunk, ms-code-block, ms-code-chunk, [aria-label*="thumb" i], [aria-label*="Good response" i], [aria-label*="Bad response" i]'));
             };
 
             const modelTurns = allTurns.filter(isModelTurn);

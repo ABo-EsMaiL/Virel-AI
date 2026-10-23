@@ -95,7 +95,9 @@ def _browser_error(text):
         return GatewayError(503, "The requested UI model could not be verified.", "model_unavailable")
     if "not initialized" in text or "Could not locate chat prompt" in text:
         return GatewayError(503, "AI Studio prompt UI is unavailable.", "browser_not_ready")
-    return GatewayError(502, "AI Studio could not complete this generation.", "upstream_error")
+    logger.error("Upstream error detail: %s", text)
+    msg = f"AI Studio could not complete this generation: {text}" if text and text.strip() else "AI Studio could not complete this generation."
+    return GatewayError(502, msg, "upstream_error")
 
 
 async def checked_stream(prompt, request_id, **options):

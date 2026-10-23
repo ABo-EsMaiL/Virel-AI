@@ -704,7 +704,50 @@ async def _function_events(plan, options, sem, owner, identifier, now, model, re
                                 next_envelope = arguments(next_raw_calls[0].get("arguments"), upstream=True, maximum=MAX_REQUEST_BYTES)
                                 if set(next_envelope) == {"calls"} and next_envelope["calls"]:
                                     next_calls = validate_calls(unpack_calls(next_envelope["calls"]), plan)
+                                    next_voice_calls = [c for c in next_calls if c.get("function", {}).get("name") == VOICE_GENERATOR_TOOL_NAME]
+                                    next_image_calls = [c for c in next_calls if c.get("function", {}).get("name") == IMAGE_CREATOR_TOOL_NAME]
                                     next_client_calls = [c for c in next_calls if c.get("function", {}).get("name") not in (IMAGE_CREATOR_TOOL_NAME, VOICE_GENERATOR_TOOL_NAME)]
+                                    if next_voice_calls and not voice_done:
+                                        for v_call in next_voice_calls:
+                                            raw_args = v_call["function"]["arguments"]
+                                            args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
+                                            v_text = args.get("text", "")
+                                            v_voice = args.get("voice")
+                                            from .image_agent import generate_chat_voice
+                                            voice_res = await generate_chat_voice(v_text, voice=v_voice)
+                                            voice_text = voice_res.get("text", "")
+                                            if voice_text:
+                                                text = (text + "\n\n" + voice_text).strip() if text else voice_text
+                                                if live:
+                                                    yield {"delta": "\n\n" + voice_text if text != voice_text else voice_text, "model": response_model(model)}
+                                            voice_done = True
+                                            v_path = voice_res.get("posix_path") or voice_res.get("file_path") or ""
+                                            v_url = voice_res.get("audio_url") or voice_res.get("url") or ""
+                                            internal_results.append({
+                                                "call_id": v_call["id"],
+                                                "name": VOICE_GENERATOR_TOOL_NAME,
+                                                "output": json.dumps({"status": "success" if v_path else "failed", "file_path": v_path, "url": v_url})
+                                            })
+                                    if next_image_calls and not image_done:
+                                        for img_call in next_image_calls:
+                                            raw_args = img_call["function"]["arguments"]
+                                            args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
+                                            prompt_arg = args.get("prompt", "")
+                                            from .image_agent import generate_chat_image
+                                            img_res = await generate_chat_image(prompt_arg)
+                                            img_text = img_res.get("text", "")
+                                            if img_text:
+                                                text = (text + "\n\n" + img_text).strip() if text else img_text
+                                                if live:
+                                                    yield {"delta": "\n\n" + img_text if text != img_text else img_text, "model": response_model(model)}
+                                            image_done = True
+                                            img_path = img_res.get("posix_path") or img_res.get("file_path") or ""
+                                            img_url = img_res.get("img_url") or ""
+                                            internal_results.append({
+                                                "call_id": img_call["id"],
+                                                "name": IMAGE_CREATOR_TOOL_NAME,
+                                                "output": json.dumps({"status": "success" if img_path else "failed", "file_path": img_path, "url": img_url})
+                                            })
                                     if next_client_calls:
                                         calls = next_client_calls
                                         native_envelope = next_envelope
