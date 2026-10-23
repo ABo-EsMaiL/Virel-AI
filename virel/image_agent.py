@@ -244,48 +244,66 @@ async def generate_chat_image(prompt: str, model_name: str = None, sources: list
     }
     input_sources = sources or []
     logger.info("Image Chat Bridge executing prompt='%s' with model='%s' sources=%d", prompt[:60], model, len(input_sources))
-    img_data = await execute_isolated_image_generation(body, input_sources)
-    b64_str = img_data["b64"]
-    data_bytes = img_data["data"]
-    actual_model = img_data.get("model", model)
-
-    # Save to runtime/generated_images
-    img_dir = Path("runtime/generated_images")
-    img_dir.mkdir(parents=True, exist_ok=True)
-    stamp = int(time.time())
-    fname = f"image_{stamp}_{uuid.uuid4().hex[:6]}.png"
-    file_path = (img_dir / fname).resolve()
-    file_path.write_bytes(data_bytes)
-
-    # Also save a copy to project root generated_images for instant access
     try:
-        proj_dir = Path("generated_images").resolve()
-        proj_dir.mkdir(exist_ok=True)
-        (proj_dir / fname).write_bytes(data_bytes)
-    except Exception:
-        pass
+        img_data = await execute_isolated_image_generation(body, input_sources)
+        b64_str = img_data["b64"]
+        data_bytes = img_data["data"]
+        actual_model = img_data.get("model", model)
 
-    posix_path = file_path.as_posix()
-    img_url = f"http://127.0.0.1:{PORT}/images/{fname}"
-    intro = f"🎨 **لقد تم توليد الصورة بنجاح بواسطة موديل الصور ({actual_model})!**\n\n"
-    img_md = f"![الصورة المولدة]({img_url})\n\n"
-    path_info = f"📁 **المسار المحلي للصورة على جهازك:**\n`{posix_path}`\n\n"
-    footer = f"🔗 **[اضغط هنا لعرض الصورة بالحجم الكامل في المتصفح]({img_url})**" 
-    text = intro + img_md + path_info + footer
-    return {
-        "text": text,
-        "intro": intro,
-        "img_md": img_md,
-        "footer": footer,
-        "file_path": str(file_path),
-        "fname": fname,
-        "posix_path": posix_path,
-        "img_url": img_url,
-        "prompt": prompt,
-        "b64": b64_str,
-        "bytes": data_bytes,
-        "model": actual_model
-    }
+        # Save to runtime/generated_images
+        img_dir = Path("runtime/generated_images")
+        img_dir.mkdir(parents=True, exist_ok=True)
+        stamp = int(time.time())
+        fname = f"image_{stamp}_{uuid.uuid4().hex[:6]}.png"
+        file_path = (img_dir / fname).resolve()
+        file_path.write_bytes(data_bytes)
+
+        # Also save a copy to project root generated_images for instant access
+        try:
+            proj_dir = Path("generated_images").resolve()
+            proj_dir.mkdir(exist_ok=True)
+            (proj_dir / fname).write_bytes(data_bytes)
+        except Exception:
+            pass
+
+        posix_path = file_path.as_posix()
+        img_url = f"http://127.0.0.1:{PORT}/images/{fname}"
+        intro = f"🎨 **لقد تم توليد الصورة بنجاح بواسطة موديل الصور ({actual_model})!**\n\n"
+        img_md = f"![الصورة المولدة]({img_url})\n\n"
+        path_info = f"📁 **المسار المحلي للصورة على جهازك:**\n`{posix_path}`\n\n"
+        footer = f"🔗 **[اضغط هنا لعرض الصورة بالحجم الكامل في المتصفح]({img_url})**" 
+        text = intro + img_md + path_info + footer
+        return {
+            "text": text,
+            "intro": intro,
+            "img_md": img_md,
+            "footer": footer,
+            "file_path": str(file_path),
+            "fname": fname,
+            "posix_path": posix_path,
+            "img_url": img_url,
+            "prompt": prompt,
+            "b64": b64_str,
+            "bytes": data_bytes,
+            "model": actual_model
+        }
+    except Exception as ex:
+        logger.warning("Image Chat Bridge generation failed: %s", ex)
+        err_msg = f"⚠️ تعذر توليد الصورة عبر المتصفح: {ex}"
+        return {
+            "text": err_msg,
+            "intro": "",
+            "img_md": "",
+            "footer": "",
+            "file_path": None,
+            "fname": None,
+            "posix_path": None,
+            "img_url": None,
+            "prompt": prompt,
+            "b64": "",
+            "bytes": b"",
+            "model": model
+        }
 
 
 
@@ -343,6 +361,7 @@ async def generate_chat_voice(text: str, voice: str = None) -> dict:
                 "audio_url": audio_url,
                 "url": audio_url,
                 "file_path": str(file_path),
+                "posix_path": posix_path,
                 "fname": fname,
                 "voice": target_voice,
                 "bytes": mp3_bytes
@@ -354,6 +373,7 @@ async def generate_chat_voice(text: str, voice: str = None) -> dict:
             "text": err_msg,
             "audio_url": None,
             "file_path": None,
+            "posix_path": None,
             "fname": None,
             "voice": target_voice,
             "bytes": b""
