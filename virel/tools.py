@@ -465,55 +465,70 @@ def _history(body, responses, origins=None, allow_media=False):
                     else:
                         name = Path(img_path).name if img_path else "image"
                         text_parts.append(f"[Attached image: {name}]")
-                elif ptype in ("image_url", "image", "file", "document", "audio", "input_audio"):
-                    if not allow_media:
-                        fail("Function requests currently accept text parts only.", unsupported=True)
-                    if ptype == "image_url":
-                        info = part.get("image_url", {})
-                        url = info.get("url") if isinstance(info, dict) else info
-                        if isinstance(url, str) and url:
-                            media_sources.append(url)
-                            text_parts.append(f"[Attached image {len(media_sources)}]")
-                    elif ptype == "image":
-                        src = part.get("source", {})
-                        if isinstance(src, dict) and src.get("type") == "base64":
-                            data_uri = f"data:{src.get('media_type', 'image/png')};base64,{src.get('data', '')}"
-                            media_sources.append(data_uri)
-                            text_parts.append(f"[Attached image {len(media_sources)}]")
-                    elif ptype == "file":
-                        info = part.get("file", {})
-                        if isinstance(info, dict):
-                            media_sources.append(info)
+                elif ptype in ("image_url", "image", "input_image", "file", "document", "input_file", "audio", "input_audio"):
+                    if ptype in ("image_url", "image", "input_image"):
+                        url = None
+                        if ptype == "image_url":
+                            info = part.get("image_url", {})
+                            url = info.get("url") if isinstance(info, dict) else info
+                        elif ptype == "input_image":
+                            info = part.get("image_url") or part.get("url")
+                            url = info.get("url") if isinstance(info, dict) else info
+                        elif ptype == "image":
+                            src = part.get("source", {})
+                            if isinstance(src, dict) and src.get("type") == "base64":
+                                url = f"data:{src.get('media_type', 'image/png')};base64,{src.get('data', '')}"
+                        if url and isinstance(url, str):
+                            if allow_media:
+                                media_sources.append(url)
+                                text_parts.append(f"[Attached image {len(media_sources)}]")
+                            else:
+                                text_parts.append("[Attached image]")
+                        else:
+                            text_parts.append("[Attached image]")
+                    elif ptype in ("file", "document", "input_file"):
+                        fname = part.get("filename") or part.get("title") or "file"
+                        info = part.get("file", {}) if ptype == "file" else part
+                        if allow_media:
+                            if ptype == "document":
+                                src = part.get("source", {})
+                                if isinstance(src, dict) and src.get("type") == "base64":
+                                    data_uri = f"data:{src.get('media_type', 'application/pdf')};base64,{src.get('data', '')}"
+                                    media_sources.append({"file_data": data_uri})
+                            elif isinstance(info, dict):
+                                media_sources.append(info)
                             text_parts.append(f"[Attached file {len(media_sources)}]")
-                    elif ptype == "document":
-                        src = part.get("source", {})
-                        if isinstance(src, dict) and src.get("type") == "base64":
-                            data_uri = f"data:{src.get('media_type', 'application/pdf')};base64,{src.get('data', '')}"
-                            media_sources.append({"file_data": data_uri})
-                            text_parts.append(f"[Attached document {len(media_sources)}]")
-                    elif ptype == "audio":
-                        src = part.get("source", {})
-                        if isinstance(src, dict) and src.get("type") == "base64":
-                            data_uri = f"data:{src.get('media_type', 'audio/mpeg')};base64,{src.get('data', '')}"
-                            ext = ".mp3"
-                            mt = src.get("media_type", "")
-                            from . import audio as audio_mod
-                            for e, (_, mimes) in audio_mod.FORMATS.items():
-                                if mt in mimes:
-                                    ext = e
-                                    break
-                            fname = part.get("title") or f"audio_{len(media_sources)}{ext}"
-                            media_sources.append({"filename": fname, "file_data": data_uri})
+                        else:
+                            text_parts.append(f"[Attached file: {fname}]")
+                    elif ptype in ("audio", "input_audio"):
+                        if allow_media:
+                            if ptype == "audio":
+                                src = part.get("source", {})
+                                if isinstance(src, dict) and src.get("type") == "base64":
+                                    data_uri = f"data:{src.get('media_type', 'audio/mpeg')};base64,{src.get('data', '')}"
+                                    ext = ".mp3"
+                                    mt = src.get("media_type", "")
+                                    from . import audio as audio_mod
+                                    for e, (_, mimes) in audio_mod.FORMATS.items():
+                                        if mt in mimes:
+                                            ext = e
+                                            break
+                                    fname = part.get("title") or f"audio_{len(media_sources)}{ext}"
+                                    media_sources.append({"filename": fname, "file_data": data_uri})
+                            elif ptype == "input_audio":
+                                info = part.get("input_audio", {})
+                                if isinstance(info, dict) and info.get("data"):
+                                    fmt = info.get("format", "wav")
+                                    data_uri = f"data:audio/{fmt};base64,{info.get('data', '')}"
+                                    media_sources.append({"filename": f"audio_{len(media_sources)}.{fmt}", "file_data": data_uri})
                             text_parts.append(f"[Attached audio {len(media_sources)}]")
-                    elif ptype == "input_audio":
-                        info = part.get("input_audio", {})
-                        if isinstance(info, dict) and info.get("data"):
-                            fmt = info.get("format", "wav")
-                            data_uri = f"data:audio/{fmt};base64,{info.get('data', '')}"
-                            media_sources.append({"filename": f"audio_{len(media_sources)}.{fmt}", "file_data": data_uri})
-                            text_parts.append(f"[Attached audio {len(media_sources)}]")
+                        else:
+                            text_parts.append("[Attached audio]")
                 else:
-                    fail("Function requests currently accept text parts only.", unsupported=True)
+                    if "text" in part and isinstance(part["text"], str):
+                        text_parts.append(part["text"])
+                    else:
+                        text_parts.append(f"[{ptype or 'part'}]")
             content = "\n".join(text_parts)
         if not isinstance(content, str):
             content = str(content) if content is not None else ""

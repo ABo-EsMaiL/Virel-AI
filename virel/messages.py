@@ -232,11 +232,12 @@ def responses_messages(body):
                         continue
                     if isinstance(part, dict) and part.get("type") in ("thinking", "redacted_thinking", "reasoning", "thought"):
                         continue
-                    if not isinstance(part, dict) or part.get("type") not in ("input_text", "output_text", "text"):
-                        raise GatewayError(400, "Unsupported Responses content type.", "unsupported_capability")
-                    if not isinstance(part.get("text"), str):
-                        raise GatewayError(400, "Text parts require a string text value.", "invalid_request")
-                    normalized.append({"type": "text", "text": part["text"]})
+                    if isinstance(part, dict):
+                        txt = part.get("text")
+                        if isinstance(txt, str):
+                            normalized.append({"type": "text", "text": txt})
+                            continue
+                        normalized.append({"type": "text", "text": f"[{part.get('type') or 'part'}]"})
                 content = normalized
             elif not isinstance(content, str):
                 raise GatewayError(400, "Messages require text content.", "invalid_request")
