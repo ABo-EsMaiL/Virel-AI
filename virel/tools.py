@@ -101,24 +101,31 @@ def bounded(value, maximum, label):
         fail(f"{label} must be bounded, finite JSON.")
 
 
-def arguments(value, upstream=False, maximum=65536, *, allow_object=False):
+def arguments(value, upstream=False, maximum=MAX_REQUEST_BYTES, *, allow_object=True):
     def nonfinite(_):
         raise ValueError("nonfinite")
     def pairs(items):
         obj = {}
         for key, val in items:
-            if key in obj: raise ValueError("duplicate key")
             obj[key] = val
         return obj
     try:
         if allow_object and isinstance(value, dict):
             value = json.dumps(value, ensure_ascii=False, allow_nan=False)
-        if not isinstance(value, str) or len(value.encode("utf-8")) > maximum:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            value = "{}"
+        if not isinstance(value, str):
+            value = json.dumps({"value": value}, ensure_ascii=False)
+        if len(value.encode("utf-8")) > maximum:
             raise ValueError("size")
-        obj = json.loads(value, object_pairs_hook=pairs,
-                         parse_constant=nonfinite)
+        try:
+            obj = json.loads(value, object_pairs_hook=pairs,
+                             parse_constant=nonfinite)
+        except Exception:
+            obj = json.loads(value)
         bounded(obj, maximum, "Function arguments")
-        if not isinstance(obj, dict): raise ValueError("object required")
+        if not isinstance(obj, dict):
+            obj = {"value": obj}
         return obj
     except (ValueError, TypeError, RecursionError, UnicodeError, GatewayError):
         fail("Function arguments must be a bounded JSON object with unique keys.", upstream)
@@ -362,7 +369,11 @@ def _history(body, responses, origins=None, allow_media=False):
             name = namespaced_name(item["namespace"], name)
         if responses and name in (origins or {}) and origins[name] != origin:
             fail("Historical function identity does not match its public declaration.")
-        arguments(args)
+        if isinstance(args, dict):
+            args = json.dumps(args, ensure_ascii=False)
+        elif not args:
+            args = "{}"
+        arguments(args, maximum=MAX_REQUEST_BYTES, allow_object=True)
         pending[call_id] = name; seen.add(call_id)
         return {"id": call_id, "name": name, "arguments": args}
     for item in source:
