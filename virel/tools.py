@@ -619,7 +619,7 @@ async def function_response(body, responses, sem, owner=""):
     allow_media = body.get("allow_media", ENABLE_SERVER_TOOLS)
     plan = prepare_tools(body, responses, allow_image_tool=allow_image, allow_media=allow_media, allow_voice_tool=allow_voice)
     ordinary = {k: v for k, v in body.items() if k not in ("tools", "tool_choice", "parallel_tool_calls", "stream_options")}
-    if ordinary.get("text") == {}: ordinary.pop("text")
+    ordinary.pop("text", None); ordinary.pop("conversation", None); ordinary.pop("previous_response_id", None); ordinary.pop("include", None); ordinary.pop("background", None); ordinary.pop("input", None); ordinary.pop("messages", None)
     options = validate_options(ordinary)
     if body.get("prompt"): fail("Reusable prompt templates are unavailable.", unsupported=True)
     await require_ready()

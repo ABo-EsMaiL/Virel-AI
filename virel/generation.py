@@ -27,12 +27,15 @@ def validate_options(body):
     if "instructions" in body and not isinstance(body["instructions"], str):
         raise GatewayError(400, "Instructions must be text.", "invalid_request")
     text_options = body.get("text")
-    if text_options is not None and text_options != {"format": {"type": "text"}}:
-        raise GatewayError(400, "Structured text formatting is not supported yet.", "unsupported_parameter")
+    if text_options is not None and not isinstance(text_options, (dict, str)):
+        raise GatewayError(400, "text options must be an object or string.", "invalid_request")
     for name in ("tools", "tool_choice", "conversation", "previous_response_id", "background", "include"):
         if body.get(name):
             raise GatewayError(400, f"{name} is not supported in this text stage.", "unsupported_capability")
-    for name in ("top_p", "response_format"):
+    response_format = body.get("response_format")
+    if response_format is not None and not isinstance(response_format, (dict, str)):
+        raise GatewayError(400, "response_format must be an object or string.", "invalid_request")
+    for name in ("top_p",):
         if body.get(name) is not None:
             raise GatewayError(400, f"{name} is not implemented by the browser adapter.", "unsupported_parameter")
     if body.get("n", 1) != 1:

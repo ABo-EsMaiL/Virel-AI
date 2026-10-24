@@ -34,6 +34,8 @@ def response_metadata(body):
         if not isinstance(include, list) or any(item != "reasoning.encrypted_content" for item in include):
             raise GatewayError(400, "Only optional reasoning content projection is recognized; no encrypted reasoning is generated.", "unsupported_capability")
         body.pop("include")
+    body.pop("conversation", None)
+    body.pop("previous_response_id", None)
     return body
 
 
