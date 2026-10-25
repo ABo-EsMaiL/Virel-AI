@@ -29,15 +29,12 @@ def validate_options(body):
     text_options = body.get("text")
     if text_options is not None and not isinstance(text_options, (dict, str)):
         raise GatewayError(400, "text options must be an object or string.", "invalid_request")
-    for name in ("tools", "tool_choice", "conversation", "previous_response_id", "background", "include"):
+    for name in ("tools", "tool_choice"):
         if body.get(name):
             raise GatewayError(400, f"{name} is not supported in this text stage.", "unsupported_capability")
     response_format = body.get("response_format")
     if response_format is not None and not isinstance(response_format, (dict, str)):
         raise GatewayError(400, "response_format must be an object or string.", "invalid_request")
-    for name in ("top_p",):
-        if body.get(name) is not None:
-            raise GatewayError(400, f"{name} is not implemented by the browser adapter.", "unsupported_parameter")
     if body.get("n", 1) != 1:
         raise GatewayError(400, "Only one completion is supported.", "unsupported_parameter")
 
@@ -54,23 +51,26 @@ def validate_options(body):
     effort = body.get("reasoning_effort")
     reasoning = body.get("reasoning")
     if reasoning is not None:
-        if not isinstance(reasoning, dict):
-            raise GatewayError(400, "reasoning must be an object.", "invalid_request")
-        if set(reasoning) - {"effort", "summary"} or reasoning.get("summary") not in (None, "none", "auto", "concise", "detailed"):
-            raise GatewayError(400, "Reasoning summaries and budgets are not implemented.", "unsupported_parameter")
-        nested = reasoning.get("effort")
-        if effort is not None and nested is not None and effort != nested:
-            raise GatewayError(400, "Conflicting reasoning effort fields.", "invalid_request")
-        effort = nested if nested is not None else effort
+        if isinstance(reasoning, dict):
+            nested = reasoning.get("effort")
+            if effort is None and nested is not None:
+                effort = nested
+        elif isinstance(reasoning, str):
+            if effort is None:
+                effort = reasoning
     if effort is not None:
-        if not isinstance(effort, str) or effort not in ("low", "medium", "high", "max"):
-            raise GatewayError(400, "Reasoning effort must be low, medium, high or max (native high).", "unsupported_parameter")
-        options["reasoning_effort"] = "high" if effort == "max" else effort
+        if isinstance(effort, str) and effort.lower() in ("low", "medium", "high", "max"):
+            options["reasoning_effort"] = "high" if effort.lower() in ("high", "max") else effort.lower()
+        else:
+            options["reasoning_effort"] = "high"
     temperature = body.get("temperature")
     if temperature is not None:
         if isinstance(temperature, bool) or not isinstance(temperature, (int, float)) or not 0 <= temperature <= 2 or not math.isfinite(temperature):
             raise GatewayError(400, "Temperature must be a finite number between 0 and 2.", "invalid_request")
         options["temperature"] = temperature
+    top_p = body.get("top_p")
+    if top_p is not None and isinstance(top_p, (int, float)) and not isinstance(top_p, bool) and 0 <= top_p <= 1:
+        options["top_p"] = top_p
     return options
 
 
