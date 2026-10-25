@@ -701,10 +701,19 @@ async def _function_events(plan, options, sem, owner, identifier, now, model, re
                         if delta:
                             yield {"delta": delta, "model": response_model(model)}
                 if raw_calls:
-                    if len(raw_calls) != 1 or raw_calls[0].get("name") != BATCH_NAME:
+                    matching = [c for c in raw_calls if c.get("name") == BATCH_NAME]
+                    if not matching:
                         fail("AI Studio did not return the single native client-tool batch envelope.", True)
-                    native_envelope = arguments(raw_calls[0].get("arguments"), upstream=True, maximum=MAX_REQUEST_BYTES)
-                    if set(native_envelope) != {"calls"} or not native_envelope["calls"]:
+                    native_envelope = None
+                    for candidate in matching:
+                        try:
+                            env = arguments(candidate.get("arguments"), upstream=True, maximum=MAX_REQUEST_BYTES)
+                            if isinstance(env, dict) and set(env) == {"calls"} and env["calls"]:
+                                native_envelope = env
+                                break
+                        except Exception:
+                            continue
+                    if not native_envelope:
                         fail("AI Studio returned an invalid native client-tool batch.", True)
                 calls = validate_calls(unpack_calls(native_envelope["calls"]) if native_envelope else [], plan)
                 image_done = bool(continuation and continuation.get("image_generated"))
