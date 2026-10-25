@@ -307,7 +307,7 @@ def prepare_tools(body, responses, *, visible_tools=None, allow_image_tool=False
         prompt += "\nRequest at most one client call in each native batch."
     return {"prompt": prompt, "history": history, "declarations": declarations, "validators": definitions, "choice": choice,
             "named": named, "parallel": body.get("parallel_tool_calls", True), "bindings": bindings,
-            "visible_tools": visible_tools, "catalog_declarations": catalog_declarations, "images": media_sources}
+            "visible_tools": visible_tools, "catalog_declarations": catalog_declarations, "images": media_sources[-4:]}
 
 
 def _history(body, responses, origins=None, allow_media=False):

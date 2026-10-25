@@ -116,9 +116,14 @@ async def checked_stream(prompt, request_id, **options):
     outcome = "failed"
     try:
         sources = options.pop("images", [])
-        fallback_prompt = options.pop("fallback_prompt", prompt)
         image_sources = [source for source in sources if isinstance(source, str)]
+        if len(image_sources) > 4:
+            logger.info("Capping prompt images from %d to latest 4", len(image_sources))
+            other_sources = [source for source in sources if not isinstance(source, str)]
+            sources = other_sources + image_sources[-4:]
+            image_sources = image_sources[-4:]
         file_sources = [source for source in sources if isinstance(source, dict)]
+        fallback_prompt = options.pop("fallback_prompt", prompt)
         async with prepared_images(image_sources) as image_paths, prepared_file_inputs(file_sources) as file_paths:
             images, file_paths = iter(image_paths), iter(file_paths)
             paths = [next(file_paths) if isinstance(source, dict) else next(images) for source in sources]

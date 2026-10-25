@@ -123,7 +123,7 @@ def extract_prompt_and_images(messages: List[ChatMessage]) -> Tuple[str, List[An
     else:
         # shortcut: roles are text labels; use native UI turn controls when role enforcement is required.
         prompt = "Continue this conversation and answer the final message:\n" + json.dumps(turns, ensure_ascii=False)
-    return prompt, sources
+    return prompt, sources[-4:]
 
 
 def format_messages_to_prompt(messages: List[ChatMessage]) -> str:

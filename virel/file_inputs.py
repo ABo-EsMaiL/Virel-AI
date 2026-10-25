@@ -131,7 +131,7 @@ def _check_document_mime(name, mime):
 @asynccontextmanager
 async def prepared_file_inputs(sources):
     if len(sources) > MAX_FILE_INPUTS:
-        raise GatewayError(413, 'Too many file inputs; see VIREL_MAX_FILE_INPUTS.', 'too_many_files')
+        sources = sources[-MAX_FILE_INPUTS:]
     if not sources:
         yield []
         return

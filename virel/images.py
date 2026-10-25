@@ -137,7 +137,7 @@ def _prepare_one(source, folder, index):
 @asynccontextmanager
 async def prepared_images(sources):
     if len(sources) > MAX_IMAGES:
-        raise GatewayError(413, 'At most four images are accepted per request.', 'too_many_images')
+        sources = sources[-MAX_IMAGES:]
     if not sources:
         yield []
         return
