@@ -165,6 +165,16 @@ class BrowserPage:
                 'capabilities': {'input_modalities': None, 'output_modalities': ['audio'], 'ui_category_icon': 'audio_magic_eraser', 'source': 'ai_studio_ui'}
             }
 
+        if not is_speech_id and identifier:
+            from .config import DEFAULT_MODEL
+            if (
+                identifier.startswith(('gpt-', 'o1', 'o3', 'o4', 'chatgpt-', 'claude-', 'anthropic/', 'openai/', 'deepseek-', 'llama-', 'mistral-', 'qwen-', 'sol-'))
+                or identifier in ('default', 'auto')
+                or (identifier.startswith('gemini-') and identifier not in self.model_catalog)
+            ):
+                logger.info('Routing external client model alias %s -> %s', identifier, DEFAULT_MODEL)
+                identifier = DEFAULT_MODEL
+
         item = self.model_catalog.get(identifier)
         if item is None:
             raise GatewayError(404, 'Requested model was not observed in the AI Studio catalog.', 'model_not_found')
@@ -210,7 +220,11 @@ class BrowserPage:
         is_speech = (output_kind == 'speech') or target_model.endswith('-tts') or '-tts-' in target_model or (target_model in (DEFAULT_SPEECH_MODEL, 'tts-1', 'tts-1-hd'))
         if target_model and not is_speech:
             from .config import DEFAULT_MODEL
-            if target_model.startswith(('gpt-', 'o1', 'o3', 'chatgpt-', 'sol-')):
+            if (
+                target_model.startswith(('gpt-', 'o1', 'o3', 'o4', 'chatgpt-', 'claude-', 'anthropic/', 'openai/', 'deepseek-', 'llama-', 'mistral-', 'qwen-', 'sol-'))
+                or target_model in ('default', 'auto')
+                or (target_model.startswith('gemini-') and target_model not in self.model_catalog)
+            ):
                 logger.info('Routing external client model alias %s -> %s', target_model, DEFAULT_MODEL)
                 target_model = DEFAULT_MODEL
 
