@@ -11,8 +11,8 @@ COPY app.py .
 COPY get_session.py .
 COPY virel ./virel
 
-ENV PORT=8001 CHROME_PROFILE_DIR=/app/runtime/browser-profile HEADLESS=true
+ENV PORT=8000 CHROME_PROFILE_DIR=/app/runtime/browser-profile HEADLESS=true
 
-EXPOSE 8001
+EXPOSE 8000
 
 CMD ["python", "app.py"]

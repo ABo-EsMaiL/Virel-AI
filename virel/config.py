@@ -23,7 +23,7 @@ PRESERVE_MARKDOWN = os.getenv("VIREL_PRESERVE_MARKDOWN", "false").lower() in ("t
 RATE_LIMIT = os.getenv("VIREL_RATE_LIMIT", "30/minute").strip()
 ENABLE_SERVER_TOOLS = os.getenv("VIREL_ENABLE_SERVER_TOOLS", "true").lower() in ("true", "1", "yes")
 
-PORT = int(os.getenv("PORT", "8001"))
+PORT = int(os.getenv("PORT", "8000"))
 TARGET_URL = "https://aistudio.google.com/prompts/new_chat"
 
 ACCOUNTS_STATE_PATH = os.path.join(RUNTIME_DIR, "accounts_state.json")
