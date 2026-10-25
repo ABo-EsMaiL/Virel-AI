@@ -7,7 +7,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN playwright install --with-deps chromium
 
 COPY LICENSE NOTICE ./
-COPY LICENSES ./LICENSES
 COPY app.py .
 COPY get_session.py .
 COPY virel ./virel
