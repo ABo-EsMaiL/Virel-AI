@@ -17,7 +17,7 @@ from slowapi.errors import RateLimitExceeded
 
 from .config import DEFAULT_MODEL, THINKING_MODE, CHROME_PROFILE_DIR, HEADLESS, PORT, MAX_CONCURRENT, RATE_LIMIT
 from .runtime import browser_manager, limiter, _get_semaphore
-from .routes import chat, responses, completions, system, files, audio, image_generation, anthropic
+from .routes import chat, responses, completions, system, files, audio, image_generation, anthropic, mcp
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("virel.webhook")
@@ -113,6 +113,6 @@ app.add_middleware(
 app.add_middleware(RequestSizeLimit)
 app.add_middleware(BrowserRequestMiddleware, pool=browser_manager)
 
-for route_module in (chat, responses, completions, system, files, audio, image_generation, anthropic):
+for route_module in (chat, responses, completions, system, files, audio, image_generation, anthropic, mcp):
     app.include_router(route_module.router)
 app.include_router(anthropic.desktop_router)

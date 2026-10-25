@@ -7,7 +7,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 API_KEY = os.getenv("VIREL_API_KEY", "").strip()
-CHROME_PROFILE_DIR = os.getenv("CHROME_PROFILE_DIR", "./runtime/browser-profile")
+CHROME_PROFILE_DIR = os.getenv("CHROME_PROFILE_DIR", "./chrome_profile")
 RUNTIME_DIR = os.path.join(BASE_DIR, "runtime")
 SESSION_DATA_PATH = os.path.join(RUNTIME_DIR, "session.json")
 if not os.path.isabs(CHROME_PROFILE_DIR):
@@ -24,6 +24,7 @@ RATE_LIMIT = os.getenv("VIREL_RATE_LIMIT", "30/minute").strip()
 ENABLE_SERVER_TOOLS = os.getenv("VIREL_ENABLE_SERVER_TOOLS", "true").lower() in ("true", "1", "yes")
 
 PORT = int(os.getenv("PORT", "8000"))
+PUBLIC_URL = os.getenv("VIREL_PUBLIC_URL", "").strip().rstrip("/")
 TARGET_URL = "https://aistudio.google.com/prompts/new_chat"
 
 ACCOUNTS_STATE_PATH = os.path.join(RUNTIME_DIR, "accounts_state.json")

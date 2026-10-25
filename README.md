@@ -227,10 +227,12 @@ Copy-Item .env.example .env
 VIREL_API_KEY=your-generated-hex-key-here
 
 # Persistent browser profile folder (where Google account login is stored)
-CHROME_PROFILE_DIR=./runtime/browser-profile
+CHROME_PROFILE_DIR=./chrome_profile
 
 # Server Port (default 8000) & Browser Visibility (false = visible window, true = headless)
 PORT=8000
+# Optional public domain / Cloudflare Tunnel URL (keeps localhost as fallback)
+VIREL_PUBLIC_URL=
 HEADLESS=false
 
 # Default Models & Thinking Mode (high, low, or minimal)
@@ -446,6 +448,31 @@ for chunk in model.stream("Analyze this codebase architecture."):
 ```
 </details>
 
+<details>
+<summary><b>🧩 Native Model Context Protocol (MCP) Server (<code>/mcp</code>)</b></summary>
+
+Virel AI exposes a built-in **Streamable HTTP MCP Server** at `http://localhost:8000/mcp` providing 3 native tools (`virel_generate_image`, `virel_generate_speech`, and `virel_web_research` with live Google Search Grounding) to any MCP-compatible IDE or agent:
+
+#### Claude Code CLI
+```powershell
+claude mcp add --transport http virel http://localhost:8000/mcp --header "Authorization: Bearer your-generated-hex-key-here"
+```
+
+#### Cursor / Windsurf / Cline / Claude Desktop (`mcpServers`)
+```json
+{
+  "mcpServers": {
+    "virel-ai": {
+      "url": "http://localhost:8000/mcp",
+      "headers": {
+        "Authorization": "Bearer your-generated-hex-key-here"
+      }
+    }
+  }
+}
+```
+</details>
+
 <img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%" alt="Divider" />
 
 ## 📡 API Reference & Protocol Matrix
@@ -461,6 +488,7 @@ for chunk in model.stream("Analyze this codebase architecture."):
 | **Audio Speech (TTS)** | `/v1/audio/speech` | `POST` | Text-to-speech synthesis (`gemini-3.8-flash-tts`) with selectable voices & formats |
 | **Audio Transcription**| `/v1/audio/transcriptions` | `POST` | Verbatim audio transcription & `/v1/audio/translations` |
 | **File Store** | `/v1/files` | `POST/GET/DELETE` | Temporary validated local file uploads (`file-*` IDs) |
+| **MCP Server** | `/mcp` | `POST/GET` | Native JSON-RPC 2.0 MCP server (`virel_generate_image`, `virel_generate_speech`, `virel_web_research`) |
 | **Model Catalog** | `/v1/models` | `GET` | Live catalog of observed models in Google AI Studio (`?refresh=true`) |
 | **Account Quota** | `/accounts` & `/accounts/reset`| `GET/POST` | View multi-account status, cooldown timers, and reset rate limits |
 | **System Health** | `/health` | `GET` | Server readiness, active account, RAM pool stats, and concurrency state |
