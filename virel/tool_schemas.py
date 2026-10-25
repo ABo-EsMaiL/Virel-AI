@@ -8,7 +8,8 @@ KEYS={"type","properties","required","items","description","enum","additionalPro
       "minimum","maximum","exclusiveMinimum","exclusiveMaximum","minLength","maxLength",
       "minItems","maxItems","minProperties","maxProperties","$schema","title","default",
       "anyOf","oneOf","const","$defs","definitions","$ref","examples","example","$comment",
-      "deprecated","readOnly","writeOnly","pattern","propertyNames","format","id","$id"}
+      "deprecated","readOnly","writeOnly","pattern","propertyNames","format","id","$id",
+      "encrypted","strict","nullable","metadata","summary"}
 TYPES={"object","array","string","number","integer","boolean","null"}
 logger = logging.getLogger("virel.webhook")
 DIAGNOSTIC_KEYWORDS = {"format", "allOf", "not", "if", "then", "else", "uniqueItems", "multipleOf",
@@ -136,13 +137,16 @@ def project_schema(schema):
         budget[0]-=1
         if depth>24 or budget[0]<0:
             fail("Native function schema expansion exceeds its bound.")
-        if not isinstance(node,dict) or set(node)-KEYS:
+        if not isinstance(node,dict):
+            fail("Native function schema node must be a JSON object.")
+        unknown = set(node) - KEYS
+        if unknown.intersection(DIAGNOSTIC_KEYWORDS):
             fail("Function schema contains an unsupported keyword; unsafe patterns, structural compositions and dynamic references are unavailable.")
         if "pattern" in node: safe_pattern(node["pattern"])
         if "$ref" in node:
             ref=node["$ref"]
             if ref in refs: fail("Recursive function schema references are unavailable.")
-            if set(node)-{"$ref","type","description","title","default","examples","example","$comment","format","id","$id","deprecated","readOnly","writeOnly"}:
+            if set(node)-{"$ref","type","description","title","default","examples","example","$comment","format","id","$id","deprecated","readOnly","writeOnly","encrypted","strict","nullable","metadata","summary"}:
                 fail("Local references accept annotation siblings only.")
             result=compile(target(ref),depth+1,refs+(ref,),node.get("type",hint))
             if "description" in node:
@@ -192,7 +196,7 @@ def project_schema(schema):
 
                 non_structural = set(node) - {unions[0], "type", "description", "title", "default", "examples", "example",
                                               "$comment", "$schema", "$defs", "definitions", "format", "id", "$id",
-                                              "deprecated", "readOnly", "writeOnly",
+                                              "deprecated", "readOnly", "writeOnly", "encrypted", "strict", "nullable", "metadata", "summary",
                                               "properties", "required", "additionalProperties", "items"}
                 if non_structural:
                     logger.warning("Union structural siblings found: %s in node keys: %s", non_structural, list(node.keys()))
@@ -265,12 +269,17 @@ def project_schema(schema):
     def inspect(node,depth=0,refs=()):
         inspection_budget[0]-=1
         if depth>24 or inspection_budget[0]<0: fail("Function schema exceeds its nesting bound.")
-        if not isinstance(node,dict) or set(node)-KEYS:
-            unknown = set(node)-KEYS if isinstance(node,dict) else set()
-            labels = sorted(key if key in DIAGNOSTIC_KEYWORDS else "<unknown>" for key in unknown)[:16]
+        if not isinstance(node,dict):
+            fail("Function schema exceeds its nesting bound.")
+        unknown = set(node) - KEYS
+        semantic_unsupported = unknown.intersection(DIAGNOSTIC_KEYWORDS)
+        if semantic_unsupported:
+            labels = sorted(semantic_unsupported)[:16]
             logger.warning("Function schema rejected depth=%d node_type=%s unsupported=%s count=%d",
-                           depth, type(node).__name__, labels, len(unknown))
+                           depth, type(node).__name__, labels, len(semantic_unsupported))
             fail("Unsupported function schema keyword.")
+        elif unknown:
+            logger.debug("Tolerating client schema annotation keywords depth=%d: %s", depth, unknown)
         if "pattern" in node: safe_pattern(node["pattern"])
         if "$ref" in node:
             ref=node["$ref"]

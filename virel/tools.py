@@ -177,7 +177,7 @@ def namespace_functions(tools):
         if not isinstance(namespace, str) or not NAME.fullmatch(namespace):
             fail("Invalid function namespace.")
         description = entry.get("description", "")
-        if (set(entry) - {"type", "name", "description", "tools"} or namespace in seen or
+        if (set(entry) - {"type", "name", "description", "tools", "title", "metadata", "strict"} or namespace in seen or
                 not isinstance(description, str) or not isinstance(entry.get("tools"), list)):
             fail("Invalid or duplicate function namespace.")
         seen.add(namespace)
@@ -219,7 +219,7 @@ def prepare_tools(body, responses, *, visible_tools=None, allow_image_tool=False
         if not isinstance(tool, dict) or tool.get("type") != "function": logging.getLogger("virel.webhook").warning("Unsupported tool item: %s", tool); fail("Only client-owned function tools are supported.", unsupported=True)
         if not responses and set(tool) != {"type", "function"}: fail("Invalid Chat function declaration.")
         fn = {k: v for k, v in tool.items() if k != "type"} if responses else tool.get("function")
-        if not isinstance(fn, dict) or set(fn) - {"name", "description", "parameters", "strict"}: fail("Unsupported function declaration fields.", unsupported=True)
+        if not isinstance(fn, dict) or set(fn) - {"name", "description", "parameters", "strict", "metadata", "title", "summary", "deprecated", "tags", "cache_control"}: fail("Unsupported function declaration fields.", unsupported=True)
         name = fn.get("name")
         if not isinstance(name, str) or not NAME.fullmatch(name) or name in definitions: fail("Function names must be unique identifiers of at most 64 characters.")
         if fn.get("strict") is not None and fn["strict"] is not False: fail("strict:true constrained decoding is unavailable in the browser UI.", unsupported=True)
