@@ -1,6 +1,8 @@
 """Environment settings; paths remain rooted at the project directory."""
 
 import os
+from contextvars import ContextVar
+from urllib.parse import urlsplit
 from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -24,7 +26,23 @@ RATE_LIMIT = os.getenv("VIREL_RATE_LIMIT", "30/minute").strip()
 ENABLE_SERVER_TOOLS = os.getenv("VIREL_ENABLE_SERVER_TOOLS", "true").lower() in ("true", "1", "yes")
 
 PORT = int(os.getenv("PORT", "8000"))
-PUBLIC_URL = os.getenv("VIREL_PUBLIC_URL", "").strip().rstrip("/")
+def _normalize_public_url(raw: str) -> str:
+    val = raw.strip().rstrip("/")
+    if not val:
+        return ""
+    if "://" not in val:
+        val = "https://" + val
+    return val
+
+raw_public_urls = os.getenv("VIREL_PUBLIC_URL", "").strip()
+PUBLIC_URLS = [_normalize_public_url(u) for u in raw_public_urls.split(",") if _normalize_public_url(u)]
+PUBLIC_URL = PUBLIC_URLS[0] if PUBLIC_URLS else ""
+ALLOWED_PUBLIC_HOSTS = {
+    (urlsplit(u).hostname or "").lower(): u
+    for u in PUBLIC_URLS
+    if urlsplit(u).hostname
+}
+ACTIVE_PUBLIC_URL: ContextVar[str] = ContextVar("virel_active_public_url", default=PUBLIC_URL)
 TARGET_URL = "https://aistudio.google.com/prompts/new_chat"
 
 ACCOUNTS_STATE_PATH = os.path.join(RUNTIME_DIR, "accounts_state.json")

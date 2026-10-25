@@ -231,7 +231,8 @@ CHROME_PROFILE_DIR=./chrome_profile
 
 # Server Port (default 8000) & Browser Visibility (false = visible window, true = headless)
 PORT=8000
-# Optional public domain / Cloudflare Tunnel URL (keeps localhost as fallback)
+# Optional Public Domain / Tunnel Allowlist (single URL or comma-separated list, e.g. https://virel.yourdomain.com,https://tunnel.trycloudflare.com)
+# When empty, only localhost/127.0.0.1 is accepted. When set, both localhost and listed public domains are accepted.
 VIREL_PUBLIC_URL=
 HEADLESS=false
 
@@ -302,6 +303,8 @@ python app.py --reset-accounts
 
 The gateway is now live at **`http://127.0.0.1:8000`**.
 
+🖥️ **Web Control Plane Dashboard**: Open **`http://127.0.0.1:8000/dashboard`** (served from `virel/dashboard.html`) to monitor live account quota states, active browser tabs, RAM telemetry, and observed models.
+
 <details>
 <summary><b>🐳 Alternative: Docker Deployment</b></summary>
 
@@ -318,6 +321,33 @@ docker run -d \
   --name virel-gateway \
   virel-ai
 ```
+</details>
+
+<details>
+<summary><b>🌐 Optional: Custom Domain & Public URL Setup (From A to Z)</b></summary>
+
+By default, Virel AI operates in **strict local-only mode** (`localhost` / `127.0.0.1`). Any request arriving from an unconfigured external domain is blocked with `403 Forbidden`.
+
+To expose your gateway to external cloud workflows (such as remote n8n servers, mobile devices, or remote IDE agents) while keeping `localhost` active at the same time:
+
+#### Option A: Instant Free Public URL via Cloudflare Quick Tunnel (No Domain Required)
+1. Install `cloudflared` and run:
+   ```powershell
+   cloudflared tunnel --url http://localhost:8000
+   ```
+2. Copy the generated `https://xxxx.trycloudflare.com` URL and add it to `VIREL_PUBLIC_URL` in your `.env`:
+   ```ini
+   VIREL_PUBLIC_URL=https://xxxx.trycloudflare.com
+   ```
+
+#### Option B: Permanent Custom Domain (e.g., `https://virel.yourdomain.com`)
+1. Open the **Cloudflare Zero Trust Dashboard** -> **Networks** -> **Tunnels** and create a tunnel on your machine.
+2. Map a Public Hostname (e.g., `virel.yourdomain.com`) to `http://localhost:8000`.
+3. Add one or more authorized domains (comma-separated) to `VIREL_PUBLIC_URL` in `.env`:
+   ```ini
+   VIREL_PUBLIC_URL=https://virel.yourdomain.com,https://backup-tunnel.trycloudflare.com
+   ```
+4. Restart `python app.py`. Virel AI will now accept requests from **both** `http://localhost:8000` and all listed public domains, and generated images/audio will automatically include both the Public Domain URL and the Localhost Fallback URL.
 </details>
 
 <img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%" alt="Divider" />
@@ -491,6 +521,7 @@ claude mcp add --transport http virel http://localhost:8000/mcp --header "Author
 | **MCP Server** | `/mcp` | `POST/GET` | Native JSON-RPC 2.0 MCP server (`virel_generate_image`, `virel_generate_speech`, `virel_web_research`) |
 | **Model Catalog** | `/v1/models` | `GET` | Live catalog of observed models in Google AI Studio (`?refresh=true`) |
 | **Account Quota** | `/accounts` & `/accounts/reset`| `GET/POST` | View multi-account status, cooldown timers, and reset rate limits |
+| **Web Dashboard** | `/dashboard` | `GET` | Interactive web control plane UI served from `virel/dashboard.html` |
 | **System Health** | `/health` | `GET` | Server readiness, active account, RAM pool stats, and concurrency state |
 
 ---

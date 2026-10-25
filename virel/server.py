@@ -15,12 +15,58 @@ from starlette.exceptions import HTTPException
 from .errors import GatewayError, http_error_handler, validation_error_handler, rate_limit_handler
 from slowapi.errors import RateLimitExceeded
 
-from .config import DEFAULT_MODEL, THINKING_MODE, CHROME_PROFILE_DIR, HEADLESS, PORT, MAX_CONCURRENT, RATE_LIMIT
+from .config import DEFAULT_MODEL, THINKING_MODE, CHROME_PROFILE_DIR, HEADLESS, PORT, MAX_CONCURRENT, RATE_LIMIT, ALLOWED_PUBLIC_HOSTS, PUBLIC_URL, ACTIVE_PUBLIC_URL
 from .runtime import browser_manager, limiter, _get_semaphore
 from .routes import chat, responses, completions, system, files, audio, image_generation, anthropic, mcp
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("virel.webhook")
+
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0", "host.docker.internal", "testserver", "testclient", ""}
+
+def _extract_hostname(raw_header: str) -> str:
+    first = raw_header.split(",")[0].strip().lower()
+    if not first:
+        return ""
+    if first.startswith("["):
+        return first.split("]")[0] + "]"
+    return first.split(":")[0]
+
+class PublicUrlAllowlistMiddleware:
+    """Allow localhost always; allow external hosts only if listed in VIREL_PUBLIC_URL."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        headers = dict(scope.get("headers", []))
+        raw_host = headers.get(b"host", b"").decode("latin1")
+        raw_fwd_host = headers.get(b"x-forwarded-host", b"").decode("latin1")
+        host_name = _extract_hostname(raw_host)
+        fwd_name = _extract_hostname(raw_fwd_host)
+
+        matched_public = PUBLIC_URL
+        for candidate in (fwd_name, host_name):
+            if not candidate or candidate in LOCAL_HOSTS:
+                continue
+            if candidate not in ALLOWED_PUBLIC_HOSTS:
+                response = await http_error_handler(
+                    Request(scope),
+                    GatewayError(
+                        403,
+                        f"Untrusted external host '{candidate}'. Add this domain to VIREL_PUBLIC_URL in .env to allow external access.",
+                        "untrusted_host"
+                    )
+                )
+                return await response(scope, receive, send)
+            matched_public = ALLOWED_PUBLIC_HOSTS[candidate]
+
+        token = ACTIVE_PUBLIC_URL.set(matched_public)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            ACTIVE_PUBLIC_URL.reset(token)
 
 
 class RequestSizeLimit:
@@ -112,6 +158,7 @@ app.add_middleware(
 
 app.add_middleware(RequestSizeLimit)
 app.add_middleware(BrowserRequestMiddleware, pool=browser_manager)
+app.add_middleware(PublicUrlAllowlistMiddleware)
 
 for route_module in (chat, responses, completions, system, files, audio, image_generation, anthropic, mcp):
     app.include_router(route_module.router)

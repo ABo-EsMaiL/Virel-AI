@@ -5,12 +5,14 @@ import os
 import re
 import time
 from fastapi import APIRouter, Depends
-from fastapi.responses import Response
+from fastapi.responses import Response, HTMLResponse
 
 from ..auth import verify_api_key
 from ..config import BASE_DIR, RUNTIME_DIR, SESSION_DATA_PATH, HEADLESS, DEFAULT_MODEL, THINKING_MODE, PORT, RATE_LIMIT
 from ..errors import GatewayError
 from ..runtime import browser_manager
+
+DASHBOARD_HTML_PATH = os.path.join(BASE_DIR, "virel", "dashboard.html")
 
 router = APIRouter()
 
@@ -72,6 +74,16 @@ async def health_check():
         "port": PORT,
         "rate_limit": RATE_LIMIT
     }
+
+
+@router.get("/dashboard", response_class=HTMLResponse)
+async def serve_dashboard():
+    """Serve the Virel AI Control Plane Web Dashboard."""
+    if not os.path.isfile(DASHBOARD_HTML_PATH):
+        raise GatewayError(404, "Dashboard UI file (virel/dashboard.html) not found.", "dashboard_not_found")
+    with open(DASHBOARD_HTML_PATH, "r", encoding="utf-8") as f:
+        html_content = f.read()
+    return HTMLResponse(content=html_content, headers={"Cache-Control": "no-cache"})
 
 
 @router.get("/accounts", dependencies=[Depends(verify_api_key)])
