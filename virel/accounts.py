@@ -97,6 +97,8 @@ class AccountManager:
         self.authuser_count = authuser_count
         self.accounts: Dict[str, Account] = {}
         self.active_id: str = ""
+        self.load_balance_mode: str = os.getenv("VIREL_LOAD_BALANCE_MODE", "failover").strip().lower()
+        self._rr_index: int = 0
 
         self._init_accounts(profiles_list, authuser_count)
         self._load_state()
@@ -217,6 +219,19 @@ class AccountManager:
             self.active_id = next(iter(self.accounts.keys()))
         return self.accounts[self.active_id]
 
+    def select_account_for_request(self) -> Account:
+        """Return active account in failover mode, or cycle ready accounts in round_robin mode."""
+        if getattr(self, "load_balance_mode", "failover") == "round_robin" and len(self.accounts) > 1:
+            now = time.time()
+            ready = [a for a in self.accounts.values() if a.is_available(now)]
+            if ready:
+                self._rr_index = (self._rr_index + 1) % len(ready)
+                chosen = ready[self._rr_index]
+                self.active_id = chosen.id
+                chosen.last_used_at = now
+                return chosen
+        return self.get_active_account()
+
     def get_target_url(self, account: Optional[Account] = None) -> str:
         acc = account or self.get_active_account()
         if acc.authuser is None or acc.authuser == 0:
@@ -298,6 +313,7 @@ class AccountManager:
         active = self.get_active_account()
         return {
             "total_accounts": len(self.accounts),
+            "load_balance_mode": getattr(self, "load_balance_mode", "failover"),
             "active_account_id": self.active_id,
             "active_authuser": active.authuser,
             "active_label": active.label,

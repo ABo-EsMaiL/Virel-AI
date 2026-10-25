@@ -1,5 +1,6 @@
 """Checked browser results shared by protocol adapters."""
 import asyncio
+import time
 from contextlib import aclosing
 from anyio import CancelScope
 import logging
@@ -104,6 +105,7 @@ def _browser_error(text):
 
 
 async def checked_stream(prompt, request_id, **options):
+    t_start = time.time()
     await require_ready()
     if browser_manager.model_catalog_observed:
         browser_manager.require_model(options.get("model_name") or DEFAULT_MODEL, output_kind=options.get("output_kind", "text"))
@@ -148,6 +150,8 @@ async def checked_stream(prompt, request_id, **options):
                             earliest_secs = account_manager.earliest_reset_seconds()
                             hrs = earliest_secs / 3600.0
                             raise GatewayError(429, f"All configured Google accounts have reached their daily quota. Earliest reset in {hrs:.1f} hours; no gateway retry was made.", "upstream_rate_limit")
+                        from .telemetry import capture_incident_screenshot
+                        await capture_incident_screenshot(browser_manager.page, getattr(browser_manager, "request_id", request_id), "generation_error")
                         raise _browser_error(err_str)
                     if isinstance(item, dict):
                         browser_manager.last_finish_reason = item.get("finish_reason", browser_manager.last_finish_reason)
@@ -180,6 +184,28 @@ async def checked_stream(prompt, request_id, **options):
         usage = browser_manager.last_usage
         logger.info("Request %s outcome=%s model=%s finish_reason=%s usage=%s", request_id, outcome, browser_manager.active_model,
                     browser_manager.last_finish_reason or "unavailable", usage.responses() if usage else "unavailable")
+        try:
+            from .runtime import account_manager
+            from .telemetry import store as telemetry_store
+            acc = account_manager.get_active_account()
+            latency_ms = int((time.time() - t_start) * 1000)
+            telemetry_store.record_request(
+                request_id=request_id,
+                account_id=acc.id,
+                account_label=acc.label,
+                model=browser_manager.active_model or options.get("model_name") or DEFAULT_MODEL,
+                kind=options.get("output_kind", "text"),
+                input_tokens=usage.input_tokens if usage else 0,
+                output_tokens=usage.output_tokens if usage else 0,
+                reasoning_tokens=(usage.reasoning_tokens or 0) if usage else 0,
+                cached_tokens=(usage.cached_tokens or 0) if usage else 0,
+                total_tokens=usage.total_tokens if usage else 0,
+                latency_ms=latency_ms,
+                tool_calls=getattr(browser_manager, "last_tool_calls_count", 0),
+                status=outcome,
+            )
+        except Exception:
+            pass
 
 
 def usage_headers(request_id):

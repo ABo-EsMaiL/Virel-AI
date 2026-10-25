@@ -210,6 +210,21 @@ async def generate_chat_image(prompt: str, model_name: str = None, sources: list
         fname = f"image_{stamp}_{uuid.uuid4().hex[:6]}.png"
         runtime_path = (img_dir / fname).resolve()
         runtime_path.write_bytes(data_bytes)
+        try:
+            from .telemetry import enforce_media_storage_limit, store as telemetry_store
+            from .runtime import account_manager
+            enforce_media_storage_limit()
+            acc = account_manager.get_active_account()
+            telemetry_store.record_request(
+                request_id=f"img_{stamp}",
+                account_id=acc.id,
+                account_label=acc.label,
+                model=actual_model or DEFAULT_IMAGE_MODEL,
+                kind="image",
+                status="completed",
+            )
+        except Exception:
+            pass
 
         target_file_path = runtime_path
         if save_directory and isinstance(save_directory, str) and save_directory.strip():
@@ -316,6 +331,21 @@ async def generate_chat_voice(text: str, voice: str = None, save_directory: str 
             fname = f"voice_{stamp}_{uuid.uuid4().hex[:6]}.mp3"
             runtime_path = (audio_dir / fname).resolve()
             runtime_path.write_bytes(mp3_bytes)
+            try:
+                from .telemetry import enforce_media_storage_limit, store as telemetry_store
+                from .runtime import account_manager
+                enforce_media_storage_limit()
+                acc = account_manager.get_active_account()
+                telemetry_store.record_request(
+                    request_id=f"voice_{stamp}",
+                    account_id=acc.id,
+                    account_label=acc.label,
+                    model=target_model or DEFAULT_SPEECH_MODEL,
+                    kind="speech",
+                    status="completed",
+                )
+            except Exception:
+                pass
 
             target_file_path = runtime_path
             if save_directory and isinstance(save_directory, str) and save_directory.strip():

@@ -88,6 +88,20 @@ async def speech(request: Request):
     async with sem:
         async with browser_manager.lock:
             source = await browser_manager.generate_speech(options['text'], options['model'], options['voice'], request_id)
+            try:
+                from ..telemetry import store as telemetry_store
+                from ..runtime import account_manager
+                acc = account_manager.get_active_account()
+                telemetry_store.record_request(
+                    request_id=request_id,
+                    account_id=acc.id,
+                    account_label=acc.label,
+                    model=options['model'],
+                    kind='speech',
+                    status='completed',
+                )
+            except Exception:
+                pass
             data = await encode_speech(source, options['format'], options['speed'])
             actual = response_model(options['model'])
             browser_manager.generated_models.add(actual)
