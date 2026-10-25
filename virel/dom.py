@@ -17,7 +17,13 @@ START_ERROR_WATCH = r"""() => {
         for (const candidate of candidates) {
             if (candidate.closest('.user-prompt-container, [data-turn-role="user"], .prompt-box-container, ms-text-chunk, ms-code-block, ms-code-chunk, ms-thought-chunk, pre, code, textarea')) continue;
             const text = (candidate.innerText || candidate.textContent || '').trim().slice(0, 1200);
-            if (pattern.test(text)) state.error = text;
+            if (pattern.test(text)) {
+                if (/reached your rate limit|reached your quota|daily limit of requests|quota exceeded/i.test(text)) {
+                    state.error = 'RATE_LIMIT: ' + text;
+                } else {
+                    state.error = text;
+                }
+            }
         }
     };
     state.observer = new MutationObserver(records => {
@@ -100,7 +106,7 @@ FETCH_RESPONSE_STATE = '''(initialCount) => {
                     errorText = 'TOO_MANY_TOOL_CALLS: ' + txt.slice(0, 500);
                     break;
                 }
-                if (!hasError && /reached your rate limit|reached your quota for the day|daily limit of requests|quota exceeded/i.test(txt)) {
+                if (/reached your rate limit|reached your quota|daily limit of requests|quota exceeded/i.test(txt)) {
                     hasError = true;
                     errorText = 'RATE_LIMIT: ' + txt.slice(0, 500);
                     break;

@@ -15,43 +15,6 @@ from .models import IMAGE_MODEL_ICONS
 
 logger = logging.getLogger("virel.webhook")
 
-IMAGE_INTENT_PATTERN = re.compile(
-    r"(?:"
-    # Arabic intent patterns
-    r"(?:اعمل|صمم|ولد|أنشئ|انشئ|ارسم|طلع|هات|ساوي|توليد|رسم|محتاج|عايز|اريد|أريد|اعملي|صمملي|ولدي|ارسميلي|طلعلي|عدل|عدلي|غير|غيرلي|ضبط|ضبطلي|تعديل|حلي|حليها|حلويها)\s+(?:لي\s+)?(?:صورة|رسمة|لوحة|تصميم|صوره|رسمه|صورتي|رسمتي|لوحتي|تصميمي|صور)"
-    r"|"
-    r"(?:ارسم|ارسميلي|ارسم لي)\s+\w+"
-    r"|"
-    # English intent patterns
-    r"(?:generate|create|draw|make|render|edit|modify)\s+(?:an?\s+)?(?:image|picture|drawing|artwork|photo|illustration)"
-    r"|"
-    r"(?:draw|paint)\s+(?:an?\s+)?\w+"
-    r")",
-    re.IGNORECASE
-)
-
-NON_CREATIVE_EXCLUSIONS = re.compile(
-    r"(?:"
-    # Moving, copying, deleting, sending, downloading, opening, viewing files
-    r"(?:انقل|انقلي|نقل|احذف|احذفي|حذف|امسح|امسحي|مسح|انسخ|انسخي|نسخ|حمل|حملي|تحميل|نزل|نزلي|تنزيل|ارسل|ارسلي|ارسال|افتح|افتحي|وريني|شوف|شوفي|صدر|تصدير|حفظ|احفظ|احفظي)"
-    r"|"
-    # File locations / paths
-    r"(?:سطح المكتب|الديسكتوب|desktop|folder|مجلد|فولدر|directory|مسار|مكان|file path|path)\b"
-    r"|"
-    # Explaining / analyzing / discussing an existing image
-    r"(?:اشرح|اشرحي|شرح|حلل|حللي|تحليل|اقرأ|اقرأي|قراءة|اوصف|اوصفي|وصف|معنى|شو رأيك|ايه رأيك|رأيك في|رأيك بـ)"
-    r"|"
-    r"\b(?:move|transfer|copy|cp|mv|delete|remove|rm|download|save\s+to|send|share|open|locate|explain|describe|analyze|ocr|read)\b"
-    r"|"
-    # Code words
-    r"\b(?:code|script|function|def\s+|class\s+|python|javascript|typescript|html|css|api|endpoint|sdk|library|module|package|import\s+|npm|pip|git|test|debug|fix|refactor|error|exception|stack\s*trace)\b"
-    r"|"
-    r"(?:كود|برمج|برمجة|سكربت|دالة|فنكشن|مكتبة|اكتب كود|اكتب سكربت)"
-    r")",
-    re.IGNORECASE
-)
-
-
 def is_image_model(model_name: str, catalog: dict = None) -> bool:
     """Detect whether a requested model or alias is an image generation model."""
     if not model_name or not isinstance(model_name, str):
@@ -116,16 +79,6 @@ def extract_image_sources(messages: list) -> list:
                                 sources.append(data_uri)
             break
     return sources
-
-
-def has_image_intent(messages: list) -> bool:
-    """Detect if the latest user turn explicitly asks for an image generation."""
-    latest = extract_last_user_text(messages)
-    if not latest or len(latest.strip()) < 3:
-        return False
-    if NON_CREATIVE_EXCLUSIONS.search(latest):
-        return False
-    return bool(IMAGE_INTENT_PATTERN.search(latest))
 
 
 def extract_image_prompt(messages: list) -> str:
@@ -231,7 +184,7 @@ async def execute_isolated_image_generation(body: dict, sources: list = None) ->
             await browser_manager.close_page(worker)
 
 
-async def generate_chat_image(prompt: str, model_name: str = None, sources: list = None) -> dict:
+async def generate_chat_image(prompt: str, model_name: str = None, sources: list = None, save_directory: str = None) -> dict:
     """Generate image using an isolated browser tab and save it to disk."""
     model = model_name or DEFAULT_IMAGE_MODEL
     if not is_image_model(model):
@@ -250,22 +203,30 @@ async def generate_chat_image(prompt: str, model_name: str = None, sources: list
         data_bytes = img_data["data"]
         actual_model = img_data.get("model", model)
 
-        # Save to runtime/generated_images
+        # Save backup copy to runtime/generated_images for HTTP preview route
         img_dir = Path("runtime/generated_images")
         img_dir.mkdir(parents=True, exist_ok=True)
         stamp = int(time.time())
         fname = f"image_{stamp}_{uuid.uuid4().hex[:6]}.png"
-        file_path = (img_dir / fname).resolve()
-        file_path.write_bytes(data_bytes)
+        runtime_path = (img_dir / fname).resolve()
+        runtime_path.write_bytes(data_bytes)
 
-        # Also save a copy to project root generated_images for instant access
-        try:
-            proj_dir = Path("generated_images").resolve()
-            proj_dir.mkdir(exist_ok=True)
-            (proj_dir / fname).write_bytes(data_bytes)
-        except Exception:
-            pass
+        target_file_path = runtime_path
+        if save_directory and isinstance(save_directory, str) and save_directory.strip():
+            save_path = Path(save_directory.strip())
+            if save_path.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
+                target_file_path = save_path
+            else:
+                target_file_path = save_path / fname
+            try:
+                target_file_path.parent.mkdir(parents=True, exist_ok=True)
+                target_file_path.write_bytes(data_bytes)
+                target_file_path = target_file_path.resolve()
+            except Exception as e:
+                logger.warning("Failed to save image to custom save_directory '%s': %s", save_directory, e)
+                target_file_path = runtime_path
 
+        file_path = target_file_path.resolve()
         posix_path = file_path.as_posix()
         img_url = f"http://127.0.0.1:{PORT}/images/{fname}"
         intro = f"🎨 **لقد تم توليد الصورة بنجاح بواسطة موديل الصور ({actual_model})!**\n\n"
@@ -306,8 +267,7 @@ async def generate_chat_image(prompt: str, model_name: str = None, sources: list
         }
 
 
-
-async def generate_chat_voice(text: str, voice: str = None) -> dict:
+async def generate_chat_voice(text: str, voice: str = None, save_directory: str = None) -> dict:
     """Generate spoken audio / voice note using AI Studio speech and save to disk."""
     from .speech import generate_in_speech_page, encode_speech
     from .runtime import browser_manager
@@ -336,22 +296,32 @@ async def generate_chat_voice(text: str, voice: str = None) -> dict:
             raw_wav = await generate_in_speech_page(worker, clean_text, target_model, target_voice)
             mp3_bytes = await encode_speech(raw_wav, "mp3", 1.0)
 
+            # Save backup copy to runtime/generated_audio for HTTP preview route
             audio_dir = Path("runtime/generated_audio")
             audio_dir.mkdir(parents=True, exist_ok=True)
             stamp = int(time.time())
             fname = f"voice_{stamp}_{uuid.uuid4().hex[:6]}.mp3"
-            file_path = (audio_dir / fname).resolve()
-            file_path.write_bytes(mp3_bytes)
+            runtime_path = (audio_dir / fname).resolve()
+            runtime_path.write_bytes(mp3_bytes)
 
-            try:
-                proj_dir = Path("generated_audio").resolve()
-                proj_dir.mkdir(exist_ok=True)
-                (proj_dir / fname).write_bytes(mp3_bytes)
-            except Exception:
-                pass
+            target_file_path = runtime_path
+            if save_directory and isinstance(save_directory, str) and save_directory.strip():
+                save_path = Path(save_directory.strip())
+                if save_path.suffix.lower() in (".mp3", ".wav"):
+                    target_file_path = save_path
+                else:
+                    target_file_path = save_path / fname
+                try:
+                    target_file_path.parent.mkdir(parents=True, exist_ok=True)
+                    target_file_path.write_bytes(mp3_bytes)
+                    target_file_path = target_file_path.resolve()
+                except Exception as e:
+                    logger.warning("Failed to save audio to custom save_directory '%s': %s", save_directory, e)
+                    target_file_path = runtime_path
 
-            audio_url = f"http://127.0.0.1:{PORT}/audio/{fname}"
+            file_path = target_file_path.resolve()
             posix_path = file_path.as_posix()
+            audio_url = f"http://127.0.0.1:{PORT}/audio/{fname}"
             intro = f"🔊 **تم توليد المقطع الصوتي بنجاح ({target_voice})!**\n\n"
             link_md = f"▶️ **[اضغط هنا للاستماع للمقطع الصوتي]({audio_url})**\n\n"
             path_info = f"📁 **المسار المحلي للملف الصوتي على جهازك:**\n`{posix_path}`\n\n"
@@ -384,11 +354,6 @@ async def generate_chat_voice(text: str, voice: str = None) -> dict:
             await browser_manager.close_page(worker)
 
 
-def make_desktop_artifact(res, desktop: bool) -> str:
-    """Artifacts are omitted to prevent raw HTML code blocks in the chat."""
-    return ""
-
-
 async def handle_anthropic_image_request(body, converted, alias, sem, owner, *, desktop=False):
     """Handle Anthropic Messages protocol when an image model or image intent is requested."""
     from .anthropic import native_error
@@ -406,7 +371,6 @@ async def handle_anthropic_image_request(body, converted, alias, sem, owner, *, 
 
     if not stream:
         result = await get_result()
-        artifact_block = make_desktop_artifact(result, desktop)
         final_text = result["text"]
         payload = {
             "id": identifier,

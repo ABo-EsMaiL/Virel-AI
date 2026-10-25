@@ -15,6 +15,10 @@ VOICE_GENERATOR_TOOL_PARAMS = {
         "voice": {
             "type": "string",
             "description": "Optional voice selector name (e.g. 'Fola', 'Bodi', 'Alloy', 'Puck', 'Kore')."
+        },
+        "save_directory": {
+            "type": "string",
+            "description": "Optional absolute path to the user's current project/workspace directory or target file/folder path where the generated audio should be saved directly. Always pass the current workspace/working directory path if known."
         }
     },
     "required": ["text"]
@@ -37,6 +41,10 @@ IMAGE_CREATOR_TOOL_PARAMS = {
         "use_attached_image": {
             "type": "boolean",
             "description": "Set to true if generating a variation, modification, or edit based on the user's uploaded image."
+        },
+        "save_directory": {
+            "type": "string",
+            "description": "Optional absolute path to the user's current project/workspace directory or target file/folder path where the generated image should be saved directly. Always pass the current workspace/working directory path if known."
         }
     },
     "required": ["prompt"]
@@ -737,7 +745,7 @@ async def _function_events(plan, options, sem, owner, identifier, now, model, re
                             if len(raw_sources) > len(sources):
                                 logging.getLogger("virel.webhook").info("Image Chat Bridge filtered %d non-image attachment(s) (audio/docs) since image generation model accepts visual references only.", len(raw_sources) - len(sources))
                             from .image_agent import generate_chat_image
-                            img_res = await generate_chat_image(prompt_arg, sources=sources)
+                            img_res = await generate_chat_image(prompt_arg, sources=sources, save_directory=args.get("save_directory"))
                             img_text = img_res.get("text", "")
                             if img_text:
                                 text = (text + "\n\n" + img_text).strip() if text else img_text
@@ -761,7 +769,7 @@ async def _function_events(plan, options, sem, owner, identifier, now, model, re
                             v_text = args.get("text", "")
                             v_voice = args.get("voice")
                             from .image_agent import generate_chat_voice
-                            voice_res = await generate_chat_voice(v_text, voice=v_voice)
+                            voice_res = await generate_chat_voice(v_text, voice=v_voice, save_directory=args.get("save_directory"))
                             voice_text = voice_res.get("text", "")
                             if voice_text:
                                 text = (text + "\n\n" + voice_text).strip() if text else voice_text
@@ -829,7 +837,7 @@ async def _function_events(plan, options, sem, owner, identifier, now, model, re
                                             v_text = args.get("text", "")
                                             v_voice = args.get("voice")
                                             from .image_agent import generate_chat_voice
-                                            voice_res = await generate_chat_voice(v_text, voice=v_voice)
+                                            voice_res = await generate_chat_voice(v_text, voice=v_voice, save_directory=args.get("save_directory"))
                                             voice_text = voice_res.get("text", "")
                                             if voice_text:
                                                 text = (text + "\n\n" + voice_text).strip() if text else voice_text
@@ -849,7 +857,7 @@ async def _function_events(plan, options, sem, owner, identifier, now, model, re
                                             args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
                                             prompt_arg = args.get("prompt", "")
                                             from .image_agent import generate_chat_image
-                                            img_res = await generate_chat_image(prompt_arg)
+                                            img_res = await generate_chat_image(prompt_arg, save_directory=args.get("save_directory"))
                                             img_text = img_res.get("text", "")
                                             if img_text:
                                                 text = (text + "\n\n" + img_text).strip() if text else img_text
