@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 from contextlib import suppress
 from .files import prune_files, expiry_loop
 from .browser_pool import BrowserRequestMiddleware
@@ -17,7 +18,7 @@ from slowapi.errors import RateLimitExceeded
 
 from .config import DEFAULT_MODEL, THINKING_MODE, CHROME_PROFILE_DIR, HEADLESS, PORT, MAX_CONCURRENT, RATE_LIMIT, ALLOWED_PUBLIC_HOSTS, PUBLIC_URL, ACTIVE_PUBLIC_URL
 from .runtime import browser_manager, limiter, _get_semaphore
-from .routes import chat, responses, completions, system, files, audio, image_generation, anthropic, mcp
+from .routes import chat, responses, completions, system, files, audio, image_generation, anthropic, mcp, dashboard_api
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("virel.webhook")
@@ -119,7 +120,11 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 65)
     _get_semaphore()
     await asyncio.to_thread(prune_files)
-    await browser_manager.start()
+    auto_start = os.getenv("VIREL_AUTO_START_BROWSER", "true").lower() in ("true", "1", "yes")
+    if auto_start:
+        startup_task = asyncio.create_task(browser_manager.start())
+    else:
+        logger.info("Browser engine auto-start is disabled (VIREL_AUTO_START_BROWSER=false). Start the engine from /dashboard when ready.")
     cleanup = asyncio.create_task(expiry_loop())
     pool_cleanup = asyncio.create_task(browser_manager.maintenance())
     try:
@@ -160,6 +165,6 @@ app.add_middleware(RequestSizeLimit)
 app.add_middleware(BrowserRequestMiddleware, pool=browser_manager)
 app.add_middleware(PublicUrlAllowlistMiddleware)
 
-for route_module in (chat, responses, completions, system, files, audio, image_generation, anthropic, mcp):
+for route_module in (chat, responses, completions, system, files, audio, image_generation, anthropic, mcp, dashboard_api):
     app.include_router(route_module.router)
 app.include_router(anthropic.desktop_router)

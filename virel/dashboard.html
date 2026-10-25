@@ -1,1 +1,1974 @@
-<!DOCTYPE html><html><head><meta charset="utf-8"><title>Virel AI Dashboard</title></head><body style="background:#09090b;color:#f4f4f5;font-family:monospace;padding:2rem;"><h1>Virel AI Control Plane</h1><p>Dashboard route (/dashboard -> virel/dashboard.html) is reserved and active.</p></body></html>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Virel AI — Autonomous Gateway Control Plane</title>
+  <link rel="icon" type="image/png" href="/assets/logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root[data-theme="dark"] {
+      --bg-base: #05080d;
+      --bg-grid: rgba(16, 185, 129, 0.045);
+      --bg-surface: rgba(12, 18, 28, 0.88);
+      --bg-elevated: #111927;
+      --bg-hover: #182334;
+      --bg-input: #080c14;
+      --border: rgba(148, 163, 184, 0.14);
+      --border-glow: rgba(16, 185, 129, 0.35);
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent: #10b981;
+      --accent-cyan: #06b6d4;
+      --accent-soft: rgba(16, 185, 129, 0.14);
+      --warn: #f59e0b;
+      --warn-soft: rgba(245, 158, 11, 0.14);
+      --danger: #ef4444;
+      --danger-soft: rgba(239, 68, 68, 0.14);
+      --shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+    }
+
+    :root[data-theme="light"] {
+      --bg-base: #f1f5f9;
+      --bg-grid: rgba(5, 150, 105, 0.05);
+      --bg-surface: rgba(255, 255, 255, 0.92);
+      --bg-elevated: #f8fafc;
+      --bg-hover: #e2e8f0;
+      --bg-input: #ffffff;
+      --border: rgba(15, 23, 42, 0.12);
+      --border-glow: rgba(5, 150, 105, 0.4);
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #64748b;
+      --accent: #059669;
+      --accent-cyan: #0891b2;
+      --accent-soft: rgba(5, 150, 105, 0.12);
+      --warn: #d97706;
+      --warn-soft: rgba(217, 119, 6, 0.12);
+      --danger: #dc2626;
+      --danger-soft: rgba(220, 38, 38, 0.12);
+      --shadow: 0 10px 30px rgba(15, 23, 42, 0.07);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-base);
+      background-image:
+        linear-gradient(to right, var(--bg-grid) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--bg-grid) 1px, transparent 1px);
+      background-size: 36px 36px;
+      color: var(--text-primary);
+      font-family: 'Inter', -apple-system, sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+      min-height: 100vh;
+      transition: background-color 0.25s ease, color 0.25s ease;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Motion Glow */
+    .ambient-orb {
+      position: fixed;
+      width: 520px;
+      height: 520px;
+      border-radius: 50%;
+      filter: blur(130px);
+      opacity: 0.14;
+      pointer-events: none;
+      z-index: 0;
+      animation: floatOrb 14s ease-in-out infinite alternate;
+    }
+    .orb-1 { top: -180px; left: -120px; background: var(--accent); }
+    .orb-2 { bottom: -180px; right: -120px; background: var(--accent-cyan); animation-delay: -7s; }
+    @keyframes floatOrb {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(60px, 40px) scale(1.12); }
+    }
+
+    /* Top Header */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      height: 64px;
+      backdrop-filter: blur(16px);
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo-ring {
+      position: relative;
+      width: 40px;
+      height: 40px;
+      border-radius: 11px;
+      padding: 2px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-cyan));
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.35);
+      animation: pulseGlow 3s infinite alternate;
+    }
+    @keyframes pulseGlow {
+      0% { box-shadow: 0 0 12px rgba(16, 185, 129, 0.25); }
+      100% { box-shadow: 0 0 24px rgba(6, 182, 212, 0.55); }
+    }
+    .logo-ring img {
+      width: 100%;
+      height: 100%;
+      border-radius: 9px;
+      object-fit: cover;
+      display: block;
+    }
+    .brand-title {
+      font-weight: 800;
+      font-size: 16px;
+      letter-spacing: -0.02em;
+      background: linear-gradient(90deg, var(--text-primary), var(--accent-cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .brand-sub {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Navigation Tabs */
+    .nav-tabs {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-elevated);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    .nav-tab {
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: 'Inter', sans-serif;
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 7px 14px;
+      border-radius: 7px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .nav-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+    .nav-tab.active {
+      background: linear-gradient(135deg, var(--accent), var(--accent-cyan));
+      color: #03150f;
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+    }
+
+    /* Top Right Controls */
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .input-sm {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 7px;
+      outline: none;
+      width: 175px;
+      transition: border-color 0.2s;
+    }
+    .input-sm:focus { border-color: var(--accent); }
+
+    .btn {
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 7px 13px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      transition: all 0.18s ease;
+    }
+    .btn:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .btn-accent {
+      background: linear-gradient(135deg, var(--accent), var(--accent-cyan));
+      color: #03150f;
+      border: none;
+      box-shadow: 0 4px 15px rgba(16, 185, 129, 0.28);
+    }
+    .btn-accent:hover { box-shadow: 0 6px 22px rgba(6, 182, 212, 0.45); }
+    .btn-danger {
+      background: var(--danger-soft);
+      color: var(--danger);
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+    .btn-warn {
+      background: var(--warn-soft);
+      color: var(--warn);
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+
+    /* Layout Container */
+    .main-wrap {
+      position: relative;
+      z-index: 2;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 22px 24px 60px;
+    }
+    .tab-pane { display: none; animation: fadeUp 0.28s ease; }
+    .tab-pane.active { display: flex; flex-direction: column; gap: 20px; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Alert Banner for Google Sign-In Watchdog */
+    .watchdog-banner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      border-radius: 12px;
+      background: linear-gradient(90deg, rgba(245, 158, 11, 0.16), rgba(239, 68, 68, 0.12));
+      border: 1px solid rgba(245, 158, 11, 0.45);
+      color: var(--text-primary);
+    }
+    .watchdog-banner.show { display: flex; }
+
+    /* Motion Graphics Pipeline Banner */
+    .pipeline-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 22px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .pipeline-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 12px;
+    }
+    .led {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--text-muted);
+    }
+    .led.ok { background: var(--accent); box-shadow: 0 0 10px var(--accent); animation: blinkLed 2s infinite; }
+    .led.warn { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
+    .led.off { background: var(--danger); }
+    @keyframes blinkLed { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+    .pipeline-svg-wrap {
+      width: 100%;
+      overflow: hidden;
+      border-radius: 10px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      padding: 10px 16px;
+    }
+    .flow-line {
+      stroke-dasharray: 8 8;
+      animation: flowDash 1.2s linear infinite;
+    }
+    @keyframes flowDash {
+      to { stroke-dashoffset: -16; }
+    }
+
+    /* Metric Cards Grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    @media (max-width: 1024px) { .metrics-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 640px) { .metrics-grid { grid-template-columns: 1fr; } }
+
+    .m-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .m-card:hover { border-color: var(--border-glow); transform: translateY(-2px); }
+    .m-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--text-secondary);
+      font-size: 11.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .m-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 26px;
+      font-weight: 700;
+      margin: 10px 0 8px;
+      color: var(--text-primary);
+    }
+    .m-bar {
+      height: 5px;
+      width: 100%;
+      background: var(--bg-elevated);
+      border-radius: 99px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .m-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-cyan));
+      transition: width 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .m-foot {
+      display: flex;
+      justify-content: space-between;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Panels & Split Grids */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1.35fr 1fr;
+      gap: 20px;
+    }
+    .grid-equal {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 1024px) { .grid-2, .grid-equal { grid-template-columns: 1fr; } }
+
+    .panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .panel-head {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .panel-title {
+      font-weight: 700;
+      font-size: 13.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .panel-body { padding: 18px; }
+
+    /* Tables */
+    .table-wrap { width: 100%; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      padding: 11px 16px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--bg-hover); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .b-ok { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--border-glow); }
+    .b-warn { background: var(--warn-soft); color: var(--warn); }
+    .b-err { background: var(--danger-soft); color: var(--danger); }
+
+    /* Interactive Toggle Switch & Segmented Pills */
+    .cfg-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 13px 0;
+      border-bottom: 1px solid var(--border);
+      gap: 16px;
+    }
+    .cfg-row:last-child { border-bottom: none; }
+    .cfg-info { display: flex; flex-direction: column; gap: 2px; }
+    .cfg-name { font-weight: 600; color: var(--text-primary); font-size: 13px; }
+    .cfg-desc { font-size: 11.5px; color: var(--text-muted); }
+
+    .switch {
+      position: relative;
+      width: 46px;
+      height: 25px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      cursor: pointer;
+      transition: all 0.22s ease;
+      flex-shrink: 0;
+    }
+    .switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 19px;
+      height: 19px;
+      border-radius: 50%;
+      background: var(--text-secondary);
+      transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), background 0.22s;
+    }
+    .switch.on {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+    }
+    .switch.on::after {
+      transform: translateX(21px);
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+    }
+
+    .seg-group {
+      display: inline-flex;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      padding: 3px;
+      border-radius: 8px;
+      gap: 4px;
+    }
+    .seg-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 5px 11px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.16s;
+    }
+    .seg-btn.active {
+      background: linear-gradient(135deg, var(--accent), var(--accent-cyan));
+      color: #03150f;
+    }
+
+    /* Chips / Tags for Public URLs */
+    .chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-glow);
+      color: var(--text-primary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      padding: 4px 10px;
+      border-radius: 7px;
+    }
+    .chip button {
+      border: none;
+      background: transparent;
+      color: var(--danger);
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    /* Agent Hub Grid */
+    .agent-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    @media (max-width: 1024px) { .agent-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 640px) { .agent-grid { grid-template-columns: 1fr; } }
+
+    .agent-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .agent-card:hover, .agent-card.selected {
+      border-color: var(--accent);
+      background: var(--bg-hover);
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+    }
+    .code-box {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--text-primary);
+      overflow-x: auto;
+      white-space: pre-wrap;
+      position: relative;
+    }
+
+    /* Live Browser Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(3, 6, 12, 0.82);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .browser-modal {
+      width: 100%;
+      max-width: 1260px;
+      height: 88vh;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-glow);
+      border-radius: 16px;
+      box-shadow: 0 25px 70px rgba(0, 0, 0, 0.75);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .browser-toolbar {
+      padding: 10px 16px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .browser-url {
+      flex: 1;
+      min-width: 220px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      padding: 7px 12px;
+      border-radius: 7px;
+      outline: none;
+    }
+    .browser-viewport {
+      flex: 1;
+      background: #000;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    #browser-screen {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      cursor: crosshair;
+      user-select: none;
+    }
+
+    /* Terminal Log Box */
+    .terminal-box {
+      background: #05070b;
+      color: #d1fae5;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      height: 420px;
+      overflow-y: auto;
+      padding: 14px;
+      border-radius: 9px;
+      border: 1px solid var(--border);
+    }
+    .log-line { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04); word-break: break-all; }
+    .log-ERROR { color: #f87171; }
+    .log-WARNING { color: #fbbf24; }
+    .log-INFO { color: #6ee7b7; }
+
+    .toast-msg {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 200;
+      background: var(--bg-elevated);
+      border: 1px solid var(--accent);
+      color: var(--text-primary);
+      padding: 12px 18px;
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      font-weight: 600;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient-orb orb-1"></div>
+  <div class="ambient-orb orb-2"></div>
+
+  <!-- Top Navigation Bar -->
+  <header class="topbar">
+    <div class="brand-wrap">
+      <div class="logo-ring">
+        <img src="/assets/logo.png" alt="Virel AI" />
+      </div>
+      <div>
+        <div class="brand-title">VIREL AI</div>
+        <div class="brand-sub" id="hdr-sub">Autonomous Control Plane</div>
+      </div>
+    </div>
+
+    <nav class="nav-tabs">
+      <button class="nav-tab active" onclick="switchTab('command', this)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        Command Center
+      </button>
+      <button class="nav-tab" onclick="switchTab('analytics', this)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        Token Analytics
+      </button>
+      <button class="nav-tab" onclick="switchTab('agents', this)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        Agent Connect Hub
+      </button>
+      <button class="nav-tab" onclick="switchTab('config', this)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Live .env Config
+      </button>
+      <button class="nav-tab" onclick="switchTab('logs', this)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        Logs & Blackbox
+      </button>
+    </nav>
+
+    <div class="top-actions">
+      <input type="password" id="master-key-input" class="input-sm" placeholder="VIREL_API_KEY" onchange="saveAuthKey()" />
+      <button class="btn btn-accent" onclick="openBrowserModal()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        Live Browser (Sign-In)
+      </button>
+      <button class="btn" onclick="toggleTheme()" title="Switch Dark / Light Mode" id="theme-btn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M18.36 5.64l1.42-1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="main-wrap">
+    <!-- Google Sign-In Watchdog Banner -->
+    <div class="watchdog-banner" id="login-watchdog">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span class="led warn"></span>
+        <div>
+          <strong>Google Account Sign-In Required!</strong>
+          <div style="font-size:12px;color:var(--text-secondary);">Chromium detected a Google login / onboarding screen. Open the interactive Live Browser popup to sign in and complete 2FA, then click Save Session.</div>
+        </div>
+      </div>
+      <button class="btn btn-accent" onclick="openBrowserModal()">Open Live Browser & Sign In</button>
+    </div>
+
+    <!-- ==================== TAB 1: COMMAND CENTER ==================== -->
+    <section class="tab-pane active" id="tab-command">
+      <!-- Motion Graphics Live Pipeline & Power Bar -->
+      <div class="pipeline-card">
+        <div class="pipeline-top">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div class="status-pill">
+              <span class="led" id="eng-led"></span>
+              <span id="eng-status-txt">Checking Engine...</span>
+            </div>
+            <div class="status-pill">Model: <strong id="ov-model" style="color:var(--accent)">—</strong></div>
+            <div class="status-pill">Thinking: <strong id="ov-thinking">—</strong></div>
+            <div class="status-pill">Account: <strong id="ov-account" style="color:var(--accent-cyan)">—</strong></div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-accent" onclick="engineAction('start')">Start Engine</button>
+            <button class="btn btn-warn" onclick="engineAction('stop')">Stop Engine (Free RAM)</button>
+            <button class="btn" onclick="engineAction('restart')">Restart Engine</button>
+            <button class="btn" onclick="engineAction('recycle_tabs')">Recycle Idle Tabs</button>
+            <button class="btn btn-danger" onclick="if(confirm('Shut down the entire Gateway & Dashboard server process?')) engineAction('shutdown_server')">Shutdown Server</button>
+          </div>
+        </div>
+
+        <!-- Animated SVG Motion Pipeline -->
+        <div class="pipeline-svg-wrap">
+          <svg width="100%" height="68" viewBox="0 0 1100 68" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <line x1="160" y1="34" x2="390" y2="34" stroke="rgba(16,185,129,0.25)" stroke-width="2"/>
+            <line x1="160" y1="34" x2="390" y2="34" stroke="#10b981" stroke-width="2.5" class="flow-line"/>
+            <line x1="530" y1="34" x2="730" y2="34" stroke="rgba(6,182,212,0.25)" stroke-width="2"/>
+            <line x1="530" y1="34" x2="730" y2="34" stroke="#06b6d4" stroke-width="2.5" class="flow-line"/>
+            <line x1="870" y1="34" x2="960" y2="34" stroke="rgba(16,185,129,0.25)" stroke-width="2"/>
+            <line x1="870" y1="34" x2="960" y2="34" stroke="#10b981" stroke-width="2.5" class="flow-line"/>
+
+            <rect x="10" y="12" width="150" height="44" rx="9" fill="#0d1522" stroke="#10b981" stroke-width="1.5"/>
+            <text x="85" y="31" fill="#f8fafc" font-size="11" font-weight="700" text-anchor="middle" font-family="Inter">CODING AGENTS</text>
+            <text x="85" y="46" fill="#94a3b8" font-size="9.5" text-anchor="middle" font-family="JetBrains Mono">Codex | Claude | n8n</text>
+
+            <rect x="390" y="12" width="140" height="44" rx="9" fill="#0d1522" stroke="#06b6d4" stroke-width="1.5"/>
+            <text x="460" y="31" fill="#f8fafc" font-size="11" font-weight="700" text-anchor="middle" font-family="Inter">VIREL GATEWAY</text>
+            <text x="460" y="46" fill="#10b981" font-size="9.5" text-anchor="middle" font-family="JetBrains Mono" id="svg-port-txt">OpenAI / Anthropic / MCP</text>
+
+            <rect x="730" y="12" width="140" height="44" rx="9" fill="#0d1522" stroke="#10b981" stroke-width="1.5"/>
+            <text x="800" y="31" fill="#f8fafc" font-size="11" font-weight="700" text-anchor="middle" font-family="Inter">CHROMIUM POOL</text>
+            <text x="800" y="46" fill="#06b6d4" font-size="9.5" text-anchor="middle" font-family="JetBrains Mono" id="svg-tabs-txt">0 Active Tabs</text>
+
+            <rect x="960" y="12" width="130" height="44" rx="9" fill="#0d1522" stroke="#10b981" stroke-width="1.5"/>
+            <text x="1025" y="31" fill="#f8fafc" font-size="11" font-weight="700" text-anchor="middle" font-family="Inter">AI STUDIO DOM</text>
+            <text x="1025" y="46" fill="#94a3b8" font-size="9.5" text-anchor="middle" font-family="JetBrains Mono">Gemini / Image / TTS</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- 4 Key Telemetry Cards -->
+      <div class="metrics-grid">
+        <div class="m-card">
+          <div class="m-head"><span>BROWSER POOL TABS</span><span>ISOLATED</span></div>
+          <div class="m-val" id="mc-tabs">0 / 20</div>
+          <div class="m-bar"><div class="m-fill" id="mf-tabs"></div></div>
+          <div class="m-foot"><span>Queued: <b id="mc-queued">0</b></span><span>Waiting Tools: <b id="mc-waiting">0</b></span></div>
+        </div>
+
+        <div class="m-card">
+          <div class="m-head"><span>SYSTEM RAM HEADROOM</span><span>PSUTIL</span></div>
+          <div class="m-val" id="mc-ram">— MB</div>
+          <div class="m-bar"><div class="m-fill" id="mf-ram" style="width:65%"></div></div>
+          <div class="m-foot"><span>Reserve: <b id="mc-reserve">1024 MB</b></span><span>Per-Tab: <b id="mc-tabmb">512 MB</b></span></div>
+        </div>
+
+        <div class="m-card">
+          <div class="m-head"><span>GOOGLE ACCOUNT POOL</span><span id="mc-lb-mode">FAILOVER</span></div>
+          <div class="m-val" id="mc-acc">0 / 0</div>
+          <div class="m-bar"><div class="m-fill" id="mf-acc"></div></div>
+          <div class="m-foot"><span>Active: <b id="mc-active-acc">—</b></span><span>Session: <b id="mc-session">—</b></span></div>
+        </div>
+
+        <div class="m-card">
+          <div class="m-head"><span>MEDIA CACHE (1GB GUARD)</span><span>RING-BUFFER</span></div>
+          <div class="m-val" id="mc-media">0 MB</div>
+          <div class="m-bar"><div class="m-fill" id="mf-media"></div></div>
+          <div class="m-foot"><span>Limit: <b id="mc-media-max">1024 MB</b></span><span>Files: <b id="mc-media-cnt">0</b></span></div>
+        </div>
+      </div>
+
+      <!-- Accounts Table & Active Task Tabs -->
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Google Accounts & Quota Cooldown Rotation</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button class="btn" onclick="accountAction('add_slot')">+ Add Account Slot</button>
+              <button class="btn btn-danger" onclick="accountAction('reset_all')">Reset All Cooldowns</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Account ID</th>
+                  <th>Selector</th>
+                  <th>Status</th>
+                  <th>Cooldown Left</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="cmd-accounts-tbody">
+                <tr><td colspan="5">Loading accounts...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:20px;">
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title">AI Studio DOM Verification State</div>
+              <button class="btn" onclick="openBrowserModal()">Inspect in Live Browser</button>
+            </div>
+            <div class="panel-body" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-family:'JetBrains Mono',monospace;font-size:12px;">
+              <div>Model Verified: <strong id="vf-model">—</strong></div>
+              <div>Thinking Verified: <strong id="vf-think">—</strong></div>
+              <div>Temperature: <strong id="vf-temp">—</strong></div>
+              <div>URL Context: <strong id="vf-url">—</strong></div>
+              <div>Search Grounding: <strong id="vf-search">—</strong></div>
+              <div>Incidents Logged: <strong id="vf-inc">0</strong></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title">Active Request Tabs</div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Tab Page ID</th><th>Execution State</th></tr></thead>
+                <tbody id="cmd-pages-tbody">
+                  <tr><td colspan="2">Idle — 0 task tabs running</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2: TOKEN ANALYTICS ==================== -->
+    <section class="tab-pane" id="tab-analytics">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Token Telemetry & Multi-Account Consumption</div>
+          <div class="seg-group">
+            <button class="seg-btn active" onclick="loadAnalytics('today', this)">Today</button>
+            <button class="seg-btn" onclick="loadAnalytics('week', this)">This Week</button>
+            <button class="seg-btn" onclick="loadAnalytics('month', this)">This Month</button>
+            <button class="seg-btn" onclick="loadAnalytics('year', this)">This Year</button>
+            <button class="seg-btn" onclick="loadAnalytics('all', this)">All Time</button>
+          </div>
+        </div>
+
+        <div class="panel-body" style="display:flex;flex-direction:column;gap:20px;">
+          <!-- 5-Period Summary Strip -->
+          <div class="metrics-grid" style="grid-template-columns:repeat(5,1fr);">
+            <div class="m-card"><div class="m-head"><span>TODAY</span></div><div class="m-val" id="w-today">0</div><div class="m-foot"><span id="w-today-req">0 reqs</span></div></div>
+            <div class="m-card"><div class="m-head"><span>THIS WEEK</span></div><div class="m-val" id="w-week">0</div><div class="m-foot"><span id="w-week-req">0 reqs</span></div></div>
+            <div class="m-card"><div class="m-head"><span>THIS MONTH</span></div><div class="m-val" id="w-month">0</div><div class="m-foot"><span id="w-month-req">0 reqs</span></div></div>
+            <div class="m-card"><div class="m-head"><span>THIS YEAR</span></div><div class="m-val" id="w-year">0</div><div class="m-foot"><span id="w-year-req">0 reqs</span></div></div>
+            <div class="m-card"><div class="m-head"><span>ALL-TIME SAVED</span></div><div class="m-val" style="color:var(--accent)" id="w-saved">$0.00</div><div class="m-foot"><span id="w-all-tok">0 total tokens</span></div></div>
+          </div>
+
+          <!-- Selected Period Breakdown -->
+          <div class="metrics-grid">
+            <div class="m-card"><div class="m-head"><span>INPUT TOKENS</span></div><div class="m-val" id="an-in">0</div><div class="m-foot"><span>Cached: <b id="an-cache">0</b></span></div></div>
+            <div class="m-card"><div class="m-head"><span>OUTPUT TOKENS</span></div><div class="m-val" id="an-out">0</div><div class="m-foot"><span>Reasoning: <b id="an-reason">0</b></span></div></div>
+            <div class="m-card"><div class="m-head"><span>COMBINED TOTAL TOKENS</span></div><div class="m-val" style="color:var(--accent-cyan)" id="an-tot">0</div><div class="m-foot"><span>Tool Calls: <b id="an-tools">0</b></span></div></div>
+            <div class="m-card"><div class="m-head"><span>AVG LATENCY / MEDIA</span></div><div class="m-val" id="an-lat">0 ms</div><div class="m-foot"><span>Images: <b id="an-img">0</b></span><span>Audio: <b id="an-aud">0</b></span></div></div>
+          </div>
+
+          <!-- Animated SVG Area Chart -->
+          <div class="panel" style="background:var(--bg-input);">
+            <div class="panel-head"><div class="panel-title">Token Consumption Timeline</div></div>
+            <div class="panel-body" id="chart-container" style="height:210px;display:flex;align-items:center;justify-content:center;">
+              <span style="color:var(--text-muted);font-family:'JetBrains Mono',monospace;">No token telemetry recorded for this window yet.</span>
+            </div>
+          </div>
+
+          <!-- Per-Account & Per-Agent Tables -->
+          <div class="grid-equal">
+            <div class="panel">
+              <div class="panel-head"><div class="panel-title">Per-Account Token Usage (Selected Period + All-Time)</div></div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Account</th>
+                      <th>Reqs</th>
+                      <th>Input</th>
+                      <th>Output</th>
+                      <th>Period Total</th>
+                      <th>All-Time Total</th>
+                    </tr>
+                  </thead>
+                  <tbody id="an-acc-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-head"><div class="panel-title">Per-Agent & Client Breakdown</div></div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Agent / Client Key</th>
+                      <th>Requests</th>
+                      <th>Input</th>
+                      <th>Output</th>
+                      <th>Total Tokens</th>
+                    </tr>
+                  </thead>
+                  <tbody id="an-agent-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recent Request Trace Inspector -->
+          <div class="panel">
+            <div class="panel-head"><div class="panel-title">Live Request Trace Inspector (Last 40 Calls)</div></div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Agent</th>
+                    <th>Account</th>
+                    <th>Model</th>
+                    <th>Kind</th>
+                    <th>In / Out / Reason</th>
+                    <th>Total Tokens</th>
+                    <th>Latency</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="an-trace-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3: AGENT CONNECT HUB ==================== -->
+    <section class="tab-pane" id="tab-agents">
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">1. Select Autonomous Agent or IDE to Connect</div>
+          </div>
+          <div class="panel-body">
+            <div class="agent-grid" id="agent-cards-grid"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title" id="hub-selected-title">2. Dedicated Agent API Key & Setup Guide</div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-accent" onclick="generateSelectedAgentKey(false)">Generate / View Key</button>
+              <button class="btn" onclick="generateSelectedAgentKey(true)">Rotate Key</button>
+            </div>
+          </div>
+          <div class="panel-body" style="display:flex;flex-direction:column;gap:14px;">
+            <div>
+              <div class="cfg-desc">Dedicated Sub-Key (Automatically added to Gateway Allowlist & tracked in Analytics):</div>
+              <div style="display:flex;gap:8px;margin-top:6px;">
+                <input type="text" id="hub-agent-key" class="browser-url" readonly value="Click 'Generate / View Key' above..." />
+                <button class="btn" onclick="copyText(document.getElementById('hub-agent-key').value)">Copy Key</button>
+              </div>
+            </div>
+
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span class="cfg-name" id="hub-guide-label">Configuration Snippet</span>
+                <button class="btn" onclick="copyText(document.getElementById('hub-code-snippet').textContent)">Copy Config</button>
+              </div>
+              <pre class="code-box" id="hub-code-snippet"></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 4: TWO-WAY LIVE .ENV CONFIG ==================== -->
+    <section class="tab-pane" id="tab-config">
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">Two-Way Live .env & Runtime Configuration</div>
+            <div class="cfg-desc">Every switch, pill, or domain chip below reads directly from .env and applies live to the running server without losing state.</div>
+          </div>
+          <div style="display:flex;gap:10px;">
+            <button class="btn" onclick="exportBackup()">Export Backup JSON</button>
+            <button class="btn btn-accent" onclick="saveLiveConfig()">Save & Apply to .env Live</button>
+          </div>
+        </div>
+
+        <div class="panel-body grid-equal">
+          <!-- Left Column: Switches & Selectors -->
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div class="cfg-row">
+              <div class="cfg-info">
+                <span class="cfg-name">Auto-Start Browser Engine on Server Boot (VIREL_AUTO_START_BROWSER)</span>
+                <span class="cfg-desc">When off, python app.py opens the Dashboard with 0 MB Chromium RAM until you click Start Engine.</span>
+              </div>
+              <div class="switch" id="sw-autostart" onclick="toggleSwitch(this)"></div>
+            </div>
+
+            <div class="cfg-row">
+              <div class="cfg-info">
+                <span class="cfg-name">Headless Browser Mode (HEADLESS)</span>
+                <span class="cfg-desc">Run Chromium silently in the background (use Restart Engine after toggling).</span>
+              </div>
+              <div class="switch" id="sw-headless" onclick="toggleSwitch(this)"></div>
+            </div>
+
+            <div class="cfg-row">
+              <div class="cfg-info">
+                <span class="cfg-name">URL Context Tool (ENABLE_URL_CONTEXT)</span>
+                <span class="cfg-desc">Allow AI Studio to browse links included inside ordinary prompts.</span>
+              </div>
+              <div class="switch" id="sw-urlctx" onclick="toggleSwitch(this)"></div>
+            </div>
+
+            <div class="cfg-row">
+              <div class="cfg-info">
+                <span class="cfg-name">Google Search Grounding (ENABLE_SEARCH_GROUNDING)</span>
+                <span class="cfg-desc">Enable live Google Search grounding on ordinary text prompts.</span>
+              </div>
+              <div class="switch" id="sw-search" onclick="toggleSwitch(this)"></div>
+            </div>
+
+            <div class="cfg-row">
+              <div class="cfg-info">
+                <span class="cfg-name">Context-Offloaded Image & Voice Tools (VIREL_ENABLE_SERVER_TOOLS)</span>
+                <span class="cfg-desc">Inject background image/voice synthesis tools into 1M-context coding agent chats.</span>
+              </div>
+              <div class="switch" id="sw-srvtools" onclick="toggleSwitch(this)"></div>
+            </div>
+
+            <div class="cfg-row">
+              <div class="cfg-info">
+                <span class="cfg-name">Preserve DOM Markdown Formatting (VIREL_PRESERVE_MARKDOWN)</span>
+                <span class="cfg-desc">Reconstruct Markdown tables, code blocks, and lists from rendered DOM nodes.</span>
+              </div>
+              <div class="switch" id="sw-markdown" onclick="toggleSwitch(this)"></div>
+            </div>
+
+            <div class="cfg-row">
+              <div class="cfg-info">
+                <span class="cfg-name">Default Thinking Mode (THINKING_MODE)</span>
+                <span class="cfg-desc">Reasoning budget applied on reasoning-capable Gemini models.</span>
+              </div>
+              <div class="seg-group" id="seg-thinking">
+                <button class="seg-btn" data-val="minimal" onclick="selectSeg('seg-thinking', 'minimal')">Minimal</button>
+                <button class="seg-btn" data-val="low" onclick="selectSeg('seg-thinking', 'low')">Low</button>
+                <button class="seg-btn" data-val="high" onclick="selectSeg('seg-thinking', 'high')">High</button>
+              </div>
+            </div>
+
+            <div class="cfg-row">
+              <div class="cfg-info">
+                <span class="cfg-name">Multi-Account Routing Strategy (VIREL_LOAD_BALANCE_MODE)</span>
+                <span class="cfg-desc">Failover stays on primary until quota limit; Round-Robin distributes requests evenly.</span>
+              </div>
+              <div class="seg-group" id="seg-lb">
+                <button class="seg-btn" data-val="failover" onclick="selectSeg('seg-lb', 'failover')">Failover</button>
+                <button class="seg-btn" data-val="round_robin" onclick="selectSeg('seg-lb', 'round_robin')">Round-Robin</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: Models, Public URLs Allowlist, RAM & Media Limits -->
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <div>
+              <div class="cfg-name">Public Domain / Cloudflare Tunnel Allowlist (VIREL_PUBLIC_URL)</div>
+              <div class="cfg-desc">When empty, only localhost is accepted. Add 1 or more public URLs to accept both localhost and listed domains:</div>
+              <div style="display:flex;gap:8px;margin-top:6px;">
+                <input type="text" id="new-pub-url" class="browser-url" placeholder="https://virel.yourdomain.com" />
+                <button class="btn btn-accent" onclick="addPublicUrlChip()">+ Add URL</button>
+              </div>
+              <div class="chip-list" id="pub-url-chips"></div>
+            </div>
+
+            <div class="grid-equal" style="gap:10px;">
+              <div>
+                <span class="cfg-name">Default Text Model</span>
+                <input type="text" id="cfg-def-model" class="browser-url" style="margin-top:4px;width:100%;" />
+              </div>
+              <div>
+                <span class="cfg-name">Default Image Model</span>
+                <input type="text" id="cfg-img-model" class="browser-url" style="margin-top:4px;width:100%;" />
+              </div>
+            </div>
+
+            <div class="grid-equal" style="gap:10px;">
+              <div>
+                <span class="cfg-name">Default TTS Speech Model</span>
+                <input type="text" id="cfg-tts-model" class="browser-url" style="margin-top:4px;width:100%;" />
+              </div>
+              <div>
+                <span class="cfg-name">Default TTS Voice</span>
+                <input type="text" id="cfg-tts-voice" class="browser-url" style="margin-top:4px;width:100%;" />
+              </div>
+            </div>
+
+            <div class="grid-equal" style="gap:10px;">
+              <div>
+                <span class="cfg-name">Google Accounts Count</span>
+                <input type="number" id="cfg-acc-cnt" class="browser-url" style="margin-top:4px;width:100%;" min="1" max="20" />
+              </div>
+              <div>
+                <span class="cfg-name">Cooldown Duration (Hours)</span>
+                <input type="number" id="cfg-cooldown-hrs" class="browser-url" style="margin-top:4px;width:100%;" step="0.5" min="0.1" />
+              </div>
+            </div>
+
+            <div class="grid-equal" style="gap:10px;">
+              <div>
+                <span class="cfg-name">Max Concurrent Tabs</span>
+                <input type="number" id="cfg-max-conc" class="browser-url" style="margin-top:4px;width:100%;" min="1" max="50" />
+              </div>
+              <div>
+                <span class="cfg-name">RAM Reserve Guard (MB)</span>
+                <input type="number" id="cfg-ram-res" class="browser-url" style="margin-top:4px;width:100%;" step="128" />
+              </div>
+            </div>
+
+            <div class="grid-equal" style="gap:10px;">
+              <div>
+                <span class="cfg-name">Media Cache Limit (MB - Default 1024)</span>
+                <input type="number" id="cfg-media-max" class="browser-url" style="margin-top:4px;width:100%;" step="128" />
+              </div>
+              <div>
+                <span class="cfg-name">Cloud / Drive Offload Folder (Optional)</span>
+                <input type="text" id="cfg-media-offload" class="browser-url" style="margin-top:4px;width:100%;" placeholder="G:/My Drive/Virel_Archive" />
+              </div>
+            </div>
+
+            <div>
+              <span class="cfg-name">Master Gateway API Key (VIREL_API_KEY)</span>
+              <div style="display:flex;gap:8px;margin-top:4px;">
+                <input type="text" id="cfg-api-key" class="browser-url" />
+                <button class="btn" onclick="generateRandomMasterKey()">Generate 32-Byte Hex</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 5: LIVE LOGS & BLACKBOX INCIDENTS ==================== -->
+    <section class="tab-pane" id="tab-logs">
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Real-Time Server Log Stream (/ws/logs)</div>
+            <button class="btn" onclick="document.getElementById('live-log-box').innerHTML=''">Clear Console</button>
+          </div>
+          <div class="panel-body">
+            <div class="terminal-box" id="live-log-box"></div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:20px;">
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title">Blackbox Flight Recorder (Error Screenshots by Date)</div>
+              <button class="btn" onclick="loadIncidents()">Refresh</button>
+            </div>
+            <div class="table-wrap" style="max-height:220px;">
+              <table>
+                <thead><tr><th>Date</th><th>Tab & Time</th><th>Size</th><th>View</th></tr></thead>
+                <tbody id="inc-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title">Media Cache Ring-Buffer (1GB Guard)</div>
+              <button class="btn btn-danger" onclick="purgeMediaCache(true)">Purge Cached Media</button>
+            </div>
+            <div class="table-wrap" style="max-height:190px;">
+              <table>
+                <thead><tr><th>Type</th><th>File</th><th>Size</th><th>Open</th></tr></thead>
+                <tbody id="media-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ==================== INTERACTIVE LIVE BROWSER MODAL ==================== -->
+  <div class="modal-backdrop" id="browser-modal">
+    <div class="browser-modal">
+      <div class="browser-toolbar">
+        <button class="btn" onclick="sendBrowserCmd({action:'back'})" title="Back">←</button>
+        <button class="btn" onclick="sendBrowserCmd({action:'forward'})" title="Forward">→</button>
+        <button class="btn" onclick="sendBrowserCmd({action:'reload'})" title="Reload">↻</button>
+
+        <select id="browser-tab-select" class="input-sm" style="width:165px;" onchange="sendBrowserCmd({action:'select_tab', tab_id:this.value})">
+          <option value="control">Primary Control Tab</option>
+        </select>
+
+        <input type="text" id="browser-url-bar" class="browser-url" placeholder="https://aistudio.google.com/prompts/new_chat" onkeydown="if(event.key==='Enter') sendBrowserCmd({action:'goto', url:this.value})" />
+        <button class="btn" onclick="sendBrowserCmd({action:'goto', url:document.getElementById('browser-url-bar').value})">Go</button>
+
+        <button class="btn" onclick="sendBrowserCmd({action:'authuser', index:0})">authuser=0</button>
+        <button class="btn" onclick="sendBrowserCmd({action:'authuser', index:1})">authuser=1</button>
+        <button class="btn btn-accent" onclick="accountAction('save_session')">Save Session (session.json)</button>
+        <button class="btn btn-danger" onclick="closeBrowserModal()">Close Popup (Keep Running)</button>
+      </div>
+
+      <div class="browser-viewport" id="browser-vp" tabindex="0">
+        <img id="browser-screen" alt="Live Chromium Stream" />
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-msg" id="toast"></div>
+
+  <script>
+    let currentPeriod = 'today';
+    let publicUrlsList = [];
+    let selectedAgentId = 'claude_code';
+    let browserWs = null;
+    let logsWs = null;
+    let remoteWidth = 1280;
+    let remoteHeight = 800;
+
+    const AGENTS_CATALOG = [
+      { id: 'claude_code', name: 'Claude Code CLI', badge: 'Anthropic API', desc: 'Official Anthropic CLI agent via /claude endpoint' },
+      { id: 'claude_desktop', name: 'Claude Desktop', badge: 'Desktop App', desc: 'Native Claude Desktop gateway with alias mapping' },
+      { id: 'codex', name: 'OpenAI Codex', badge: 'Responses API', desc: 'Codex Desktop & CLI via /v1/responses wire API' },
+      { id: 'cline', name: 'VS Code: Cline', badge: 'OpenAI Chat', desc: 'Autonomous IDE coding agent with multi-turn tools' },
+      { id: 'continue', name: 'VS Code: Continue', badge: 'YAML Block', desc: 'Workspace model block with tool & vision support' },
+      { id: 'opencode', name: 'OpenCode CLI', badge: 'AI SDK', desc: 'Terminal coding agent via opencode.json provider' },
+      { id: 'n8n', name: 'n8n Workflows', badge: 'Enterprise ERP', desc: 'Chat Model, Vision, Audio TTS & Image nodes' },
+      { id: 'mcp', name: 'MCP Client (/mcp)', badge: 'JSON-RPC 2.0', desc: 'Streamable HTTP MCP server (Image, Speech, Web Search)' },
+      { id: 'langchain', name: 'LangChain / Python', badge: 'Python SDK', desc: 'Standard ChatOpenAI streaming & tool calling' }
+    ];
+
+    // Theme Initialization
+    const savedTheme = localStorage.getItem('virel_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    document.getElementById('master-key-input').value = localStorage.getItem('virel_api_key') || '';
+
+    function toggleTheme() {
+      const curr = document.documentElement.getAttribute('data-theme');
+      const next = curr === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('virel_theme', next);
+    }
+
+    function saveAuthKey() {
+      const val = document.getElementById('master-key-input').value.trim();
+      localStorage.setItem('virel_api_key', val);
+      refreshAll();
+    }
+
+    function getAuthKey() {
+      return document.getElementById('master-key-input').value.trim();
+    }
+
+    function authHeaders() {
+      const k = getAuthKey();
+      return k ? { 'Authorization': `Bearer ${k}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 3200);
+    }
+
+    function copyText(txt) {
+      navigator.clipboard.writeText(txt || '');
+      showToast('Copied to clipboard!');
+    }
+
+    function switchTab(tabId, btn) {
+      document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+      document.getElementById(`tab-${tabId}`).classList.add('active');
+      if (btn) btn.classList.add('active');
+      if (tabId === 'analytics') loadAnalytics(currentPeriod);
+      if (tabId === 'agents') renderAgentHub();
+      if (tabId === 'config') loadLiveConfig();
+      if (tabId === 'logs') { connectLogsWs(); loadIncidents(); }
+    }
+
+    function fmtNum(n) {
+      return Number(n || 0).toLocaleString();
+    }
+
+    function fmtDur(sec) {
+      if (!sec || sec <= 0) return '—';
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      return `${h}h ${m}m ${s}s`;
+    }
+
+    // ==================== 1. OVERVIEW POLLING ====================
+    async function fetchOverview() {
+      try {
+        const res = await fetch('/api/dashboard/overview', { headers: authHeaders() });
+        if (!res.ok) return;
+        const d = await res.json();
+
+        const led = document.getElementById('eng-led');
+        const stTxt = document.getElementById('eng-status-txt');
+        if (!d.engine_running) {
+          led.className = 'led off';
+          stTxt.textContent = 'Engine Stopped (0 MB Chromium RAM)';
+        } else if (d.needs_google_login) {
+          led.className = 'led warn';
+          stTxt.textContent = 'Waiting for Google Sign-In';
+        } else if (d.browser_ready) {
+          led.className = 'led ok';
+          stTxt.textContent = 'Engine Online & Verified';
+        } else {
+          led.className = 'led warn';
+          stTxt.textContent = 'Engine Initializing...';
+        }
+
+        const wd = document.getElementById('login-watchdog');
+        if (d.needs_google_login) wd.classList.add('show');
+        else wd.classList.remove('show');
+
+        document.getElementById('ov-model').textContent = d.active_model || '—';
+        document.getElementById('ov-thinking').textContent = (d.active_thinking || 'high').toUpperCase();
+
+        const acc = d.accounts || {};
+        const accList = acc.accounts || [];
+        const readyAccs = accList.filter(a => a.status === 'ready').length;
+        document.getElementById('ov-account').textContent = `${acc.active_account_id || '—'} (${acc.active_label || ''})`;
+        document.getElementById('mc-acc').textContent = `${readyAccs} / ${acc.total_accounts || accList.length}`;
+        document.getElementById('mf-acc').style.width = `${accList.length ? (readyAccs / accList.length) * 100 : 0}%`;
+        document.getElementById('mc-active-acc').textContent = acc.active_label || '—';
+        document.getElementById('mc-lb-mode').textContent = (acc.load_balance_mode || 'failover').toUpperCase();
+        document.getElementById('mc-session').textContent = d.session_file_exists ? 'SAVED' : 'NONE';
+
+        const pool = d.pool || {};
+        const actTabs = pool.active || 0;
+        const maxTabs = pool.max_active || 20;
+        document.getElementById('mc-tabs').textContent = `${actTabs} / ${maxTabs}`;
+        document.getElementById('mf-tabs').style.width = `${Math.min(100, (actTabs / maxTabs) * 100)}%`;
+        document.getElementById('mc-queued').textContent = pool.queued || 0;
+        document.getElementById('mc-waiting').textContent = pool.waiting_tools || 0;
+        document.getElementById('svg-tabs-txt').textContent = `${actTabs} Active / ${pool.waiting_tools || 0} Tool Lease`;
+
+        document.getElementById('mc-ram').textContent = `${fmtNum(pool.memory_available_mb)} MB`;
+        document.getElementById('mc-reserve').textContent = `${pool.memory_reserve_mb || 1024} MB`;
+        document.getElementById('mc-tabmb').textContent = `${pool.estimated_new_tab_mb || 512} MB`;
+
+        const ms = d.media_storage || {};
+        const usedMb = ms.total_mb || 0;
+        const maxMb = ms.max_mb || 1024;
+        document.getElementById('mc-media').textContent = `${usedMb} MB`;
+        document.getElementById('mf-media').style.width = `${Math.min(100, (usedMb / maxMb) * 100)}%`;
+        document.getElementById('mc-media-max').textContent = `${maxMb} MB`;
+        document.getElementById('mc-media-cnt').textContent = ms.file_count || 0;
+
+        // Verification badges
+        document.getElementById('vf-model').textContent = d.model_verified ? 'VERIFIED' : 'UNVERIFIED';
+        document.getElementById('vf-think').textContent = d.thinking_verified ? 'VERIFIED' : 'UNVERIFIED';
+        document.getElementById('vf-temp').textContent = d.temperature_verified ? String(d.active_temperature) : 'DEFAULT';
+        document.getElementById('vf-url').textContent = d.url_context_enabled ? 'ON' : 'OFF';
+        document.getElementById('vf-search').textContent = d.google_search_enabled ? 'ON' : 'OFF';
+        document.getElementById('vf-inc').textContent = d.incidents_count || 0;
+
+        // Accounts Table
+        const atbody = document.getElementById('cmd-accounts-tbody');
+        atbody.innerHTML = accList.map(a => {
+          const isReady = a.status === 'ready';
+          const isAct = a.id === acc.active_account_id;
+          return `
+            <tr>
+              <td style="color:var(--text-primary);font-weight:600;">${a.id} ${isAct ? '<span class="badge b-ok">ACTIVE</span>' : ''}</td>
+              <td>${a.label}</td>
+              <td><span class="badge ${isReady ? 'b-ok' : 'b-err'}">${a.status.toUpperCase()}</span></td>
+              <td>${isReady ? '—' : fmtDur(a.cooldown_remaining_seconds)}</td>
+              <td style="display:flex;gap:6px;">
+                <button class="btn" style="padding:3px 8px;font-size:11px;" onclick="accountAction('switch',{account_id:'${a.id}'})">Use</button>
+                <button class="btn" style="padding:3px 8px;font-size:11px;" onclick="accountAction('reset_one',{account_id:'${a.id}'})">Reset</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        // Pages Table
+        const pages = pool.pages || [];
+        const ptbody = document.getElementById('cmd-pages-tbody');
+        if (!pages.length) {
+          ptbody.innerHTML = `<tr><td colspan="2">Idle — 0 isolated task tabs running</td></tr>`;
+        } else {
+          ptbody.innerHTML = pages.map(p => `
+            <tr>
+              <td style="color:var(--text-primary)">${p.page_id}</td>
+              <td><span class="badge b-ok">${p.state.toUpperCase()}</span></td>
+            </tr>
+          `).join('');
+        }
+
+        // Media files in Logs tab
+        const mtbody = document.getElementById('media-tbody');
+        if (mtbody && ms.recent_files) {
+          mtbody.innerHTML = ms.recent_files.length ? ms.recent_files.map(f => `
+            <tr>
+              <td><span class="badge b-ok">${f.kind.toUpperCase()}</span></td>
+              <td>${f.name}</td>
+              <td>${(f.bytes / 1024).toFixed(1)} KB</td>
+              <td><a href="${f.url}" target="_blank" style="color:var(--accent)">Open</a></td>
+            </tr>
+          `).join('') : `<tr><td colspan="4">Media cache is empty</td></tr>`;
+        }
+      } catch (e) {}
+    }
+
+    async function engineAction(act) {
+      const res = await fetch(`/api/dashboard/engine/${act}`, { method: 'POST', headers: authHeaders() });
+      const d = await res.json();
+      showToast(d.message || d.status || 'Done');
+      setTimeout(fetchOverview, 600);
+    }
+
+    async function accountAction(act, payload = {}) {
+      const res = await fetch(`/api/dashboard/accounts/${act}`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        showToast(`Account action '${act}' applied!`);
+        fetchOverview();
+      } else {
+        showToast('Action failed — check VIREL_API_KEY in top bar.');
+      }
+    }
+
+    // ==================== 2. TOKEN ANALYTICS ====================
+    async function loadAnalytics(period, btn) {
+      currentPeriod = period;
+      if (btn) {
+        btn.parentElement.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+      const res = await fetch(`/api/dashboard/analytics?period=${period}`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const d = await res.json();
+
+      const w = d.windows || {};
+      for (const k of ['today', 'week', 'month', 'year']) {
+        document.getElementById(`w-${k}`).textContent = fmtNum(w[k]?.total_tokens || 0);
+        document.getElementById(`w-${k}-req`).textContent = `${fmtNum(w[k]?.requests || 0)} requests`;
+      }
+      document.getElementById('w-all-tok').textContent = `${fmtNum(w.all?.total_tokens || 0)} total tokens`;
+
+      const s = d.summary || {};
+      document.getElementById('w-saved').textContent = `$${Number(s.estimated_cost_saved_usd || 0).toFixed(2)}`;
+      document.getElementById('an-in').textContent = fmtNum(s.input_tokens);
+      document.getElementById('an-cache').textContent = fmtNum(s.cached_tokens);
+      document.getElementById('an-out').textContent = fmtNum(s.output_tokens);
+      document.getElementById('an-reason').textContent = fmtNum(s.reasoning_tokens);
+      document.getElementById('an-tot').textContent = fmtNum(s.total_tokens);
+      document.getElementById('an-tools').textContent = fmtNum(s.total_tool_calls);
+      document.getElementById('an-lat').textContent = `${fmtNum(s.avg_latency_ms)} ms`;
+      document.getElementById('an-img').textContent = fmtNum(s.images_generated);
+      document.getElementById('an-aud').textContent = fmtNum(s.audio_generated);
+
+      // Render SVG Area Chart
+      const tl = d.timeline || [];
+      const chartBox = document.getElementById('chart-container');
+      if (!tl.length) {
+        chartBox.innerHTML = `<span style="color:var(--text-muted);font-family:'JetBrains Mono',monospace;">No token telemetry recorded for this window yet.</span>`;
+      } else {
+        const maxT = Math.max(1, ...tl.map(p => p.total_tokens || 0));
+        const W = 960, H = 165, pad = 28;
+        const pts = tl.map((p, idx) => {
+          const x = pad + (tl.length === 1 ? (W - pad * 2) / 2 : (idx / (tl.length - 1)) * (W - pad * 2));
+          const y = H - pad - ((p.total_tokens || 0) / maxT) * (H - pad * 2);
+          return { x, y, label: p.bucket, val: p.total_tokens };
+        });
+        const poly = pts.map(p => `${p.x},${p.y}`).join(' ');
+        const area = `${pts[0].x},${H - pad} ${poly} ${pts[pts.length - 1].x},${H - pad}`;
+        chartBox.innerHTML = `
+          <svg width="100%" height="175" viewBox="0 0 ${W} ${H}">
+            <defs>
+              <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#10b981" stop-opacity="0.42"/>
+                <stop offset="100%" stop-color="#06b6d4" stop-opacity="0.0"/>
+              </linearGradient>
+            </defs>
+            <polygon points="${area}" fill="url(#areaGrad)" />
+            <polyline points="${poly}" fill="none" stroke="#10b981" stroke-width="2.5" />
+            ${pts.map(p => `<circle cx="${p.x}" cy="${p.y}" r="4" fill="#06b6d4"><title>${p.label}: ${fmtNum(p.val)} tokens</title></circle>`).join('')}
+          </svg>
+        `;
+      }
+
+      // Per-Account Table
+      const accTbody = document.getElementById('an-acc-tbody');
+      const perAcc = d.per_account || [];
+      accTbody.innerHTML = perAcc.length ? perAcc.map(a => `
+        <tr>
+          <td style="color:var(--text-primary);font-weight:600;">${a.account_id} (${a.account_label || ''})</td>
+          <td>${fmtNum(a.requests)}</td>
+          <td>${fmtNum(a.input_tokens)}</td>
+          <td>${fmtNum(a.output_tokens)}</td>
+          <td style="color:var(--accent);font-weight:600;">${fmtNum(a.total_tokens)}</td>
+          <td>${fmtNum(a.all_time_tokens)}</td>
+        </tr>
+      `).join('') : `<tr><td colspan="6">No account usage recorded yet</td></tr>`;
+
+      // Per-Agent Table
+      const agTbody = document.getElementById('an-agent-tbody');
+      const perAg = d.per_agent || [];
+      agTbody.innerHTML = perAg.length ? perAg.map(g => `
+        <tr>
+          <td style="color:var(--text-primary);font-weight:600;">${g.agent_id.toUpperCase()}</td>
+          <td>${fmtNum(g.requests)}</td>
+          <td>${fmtNum(g.input_tokens)}</td>
+          <td>${fmtNum(g.output_tokens)}</td>
+          <td style="color:var(--accent-cyan);font-weight:600;">${fmtNum(g.total_tokens)}</td>
+        </tr>
+      `).join('') : `<tr><td colspan="5">No agent usage recorded yet</td></tr>`;
+
+      // Recent Traces
+      const trTbody = document.getElementById('an-trace-tbody');
+      const traces = d.recent_traces || [];
+      trTbody.innerHTML = traces.length ? traces.map(t => `
+        <tr>
+          <td>${new Date(t.timestamp * 1000).toLocaleTimeString()}</td>
+          <td><span class="badge b-ok">${t.agent_id}</span></td>
+          <td>${t.account_id}</td>
+          <td>${t.model}</td>
+          <td>${t.kind.toUpperCase()}</td>
+          <td>${fmtNum(t.input_tokens)} / ${fmtNum(t.output_tokens)} / ${fmtNum(t.reasoning_tokens)}</td>
+          <td style="color:var(--text-primary);font-weight:600;">${fmtNum(t.total_tokens)}</td>
+          <td>${fmtNum(t.latency_ms)} ms</td>
+          <td><span class="badge ${t.status === 'completed' ? 'b-ok' : 'b-err'}">${t.status.toUpperCase()}</span></td>
+        </tr>
+      `).join('') : `<tr><td colspan="9">No requests logged yet</td></tr>`;
+    }
+
+    // ==================== 3. AGENT CONNECT HUB ====================
+    let agentKeysMap = {};
+    let gatewayBaseUrl = window.location.origin;
+    let gatewayDefaultModel = 'gemini-flash-latest';
+
+    async function renderAgentHub() {
+      const res = await fetch('/api/dashboard/agents', { headers: authHeaders() });
+      if (res.ok) {
+        const d = await res.json();
+        gatewayBaseUrl = d.base_url || window.location.origin;
+        gatewayDefaultModel = d.default_model || 'gemini-flash-latest';
+        agentKeysMap = {};
+        (d.keys || []).forEach(k => { agentKeysMap[k.agent_id] = k.api_key; });
+      }
+      const grid = document.getElementById('agent-cards-grid');
+      grid.innerHTML = AGENTS_CATALOG.map(a => `
+        <div class="agent-card ${a.id === selectedAgentId ? 'selected' : ''}" onclick="selectAgentCard('${a.id}')">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <strong style="font-size:13.5px;color:var(--text-primary);">${a.name}</strong>
+            <span class="badge b-ok">${a.badge}</span>
+          </div>
+          <div style="font-size:11.5px;color:var(--text-muted);">${a.desc}</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:${agentKeysMap[a.id] ? 'var(--accent)' : 'var(--text-muted)'};">
+            ${agentKeysMap[a.id] ? '● Key Active' : '○ Click to generate key'}
+          </div>
+        </div>
+      `).join('');
+      updateAgentSnippet();
+    }
+
+    function selectAgentCard(id) {
+      selectedAgentId = id;
+      renderAgentHub();
+    }
+
+    async function generateSelectedAgentKey(rotate = false) {
+      const item = AGENTS_CATALOG.find(a => a.id === selectedAgentId);
+      const res = await fetch('/api/dashboard/agents/connect', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ agent_id: selectedAgentId, label: item ? item.name : selectedAgentId, rotate })
+      });
+      if (res.ok) {
+        const d = await res.json();
+        agentKeysMap[selectedAgentId] = d.agent.api_key;
+        showToast(`API Key ready for ${selectedAgentId}!`);
+        renderAgentHub();
+      }
+    }
+
+    function updateAgentSnippet() {
+      const key = agentKeysMap[selectedAgentId] || getAuthKey() || 'virel-your-generated-key';
+      document.getElementById('hub-agent-key').value = key;
+      const base = gatewayBaseUrl.replace(/\/+$/, '');
+      const mdl = gatewayDefaultModel;
+      let code = '';
+
+      if (selectedAgentId === 'claude_code') {
+        code = `# PowerShell:\n$env:ANTHROPIC_BASE_URL = "${base}/claude"\n$env:ANTHROPIC_API_KEY = "${key}"\nclaude --model ${mdl}\n\n# Bash / Zsh:\nexport ANTHROPIC_BASE_URL="${base}/claude"\nexport ANTHROPIC_API_KEY="${key}"\nclaude --model ${mdl}`;
+      } else if (selectedAgentId === 'claude_desktop') {
+        code = `// claude_desktop_config.json\n{\n  "gateway": {\n    "url": "${base}/claude",\n    "api_key": "${key}"\n  }\n}`;
+      } else if (selectedAgentId === 'codex') {
+        code = `# config.toml\nmodel = "${mdl}"\nmodel_provider = "virel"\nmodel_reasoning_effort = "high"\n\n[model_providers.virel]\nname = "Virel AI"\nbase_url = "${base}/v1"\nenv_key = "VIREL_API_KEY"\nwire_api = "responses"\nrequires_openai_auth = false\nrequest_max_retries = 0\nstream_max_retries = 0\nstream_idle_timeout_ms = 1200000\n\n# Set in terminal: $env:VIREL_API_KEY="${key}"`;
+      } else if (selectedAgentId === 'cline') {
+        code = `Provider: OpenAI Compatible\nBase URL: ${base}/v1\nAPI Key:  ${key}\nModel ID: ${mdl}`;
+      } else if (selectedAgentId === 'continue') {
+        code = `# .continue/models/virel.yaml\nname: Virel Gemini\nversion: 1.0.0\nschema: v1\nmodels:\n  - name: Virel Gemini\n    provider: openai\n    model: ${mdl}\n    apiBase: ${base}/v1\n    apiKey: ${key}\n    useResponsesApi: false\n    roles: [chat, edit, apply]\n    capabilities: [tool_use, image_input]`;
+      } else if (selectedAgentId === 'opencode') {
+        code = `{\n  "$schema": "https://opencode.ai/config.json",\n  "model": "virel/${mdl}",\n  "enabled_providers": ["virel"],\n  "provider": {\n    "virel": {\n      "npm": "@ai-sdk/openai-compatible",\n      "name": "Virel AI",\n      "options": {\n        "baseURL": "${base}/v1",\n        "apiKey": "${key}"\n      },\n      "models": {\n        "${mdl}": { "name": "Gemini via Virel" }\n      }\n    }\n  }\n}`;
+      } else if (selectedAgentId === 'n8n') {
+        code = `n8n OpenAI API Credential:\n- Base URL (Local n8n):  ${base}/v1\n- Base URL (Docker n8n): http://host.docker.internal:${window.location.port || 8000}/v1\n- API Key:               ${key}\n- Default Model:         ${mdl}`;
+      } else if (selectedAgentId === 'mcp') {
+        code = `# Claude Code CLI:\nclaude mcp add --transport http virel ${base}/mcp --header "Authorization: Bearer ${key}"\n\n# Cursor / Windsurf / Cline mcpServers JSON:\n{\n  "mcpServers": {\n    "virel-ai": {\n      "url": "${base}/mcp",\n      "headers": {\n        "Authorization": "Bearer ${key}"\n      }\n    }\n  }\n}`;
+      } else {
+        code = `from langchain_openai import ChatOpenAI\n\nllm = ChatOpenAI(\n    model="${mdl}",\n    base_url="${base}/v1",\n    api_key="${key}",\n    streaming=True,\n    max_retries=0,\n)`;
+      }
+      document.getElementById('hub-code-snippet').textContent = code;
+    }
+
+    // ==================== 4. TWO-WAY LIVE .ENV CONFIG ====================
+    function toggleSwitch(el) {
+      el.classList.toggle('on');
+    }
+
+    function setSwitch(id, val) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (val) el.classList.add('on');
+      else el.classList.remove('on');
+    }
+
+    function getSwitch(id) {
+      return document.getElementById(id)?.classList.contains('on') || false;
+    }
+
+    function selectSeg(groupId, val) {
+      const grp = document.getElementById(groupId);
+      if (!grp) return;
+      grp.querySelectorAll('.seg-btn').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-val') === val);
+      });
+    }
+
+    function getSeg(groupId) {
+      const act = document.querySelector(`#${groupId} .seg-btn.active`);
+      return act ? act.getAttribute('data-val') : '';
+    }
+
+    function renderPubUrlChips() {
+      const box = document.getElementById('pub-url-chips');
+      if (!publicUrlsList.length) {
+        box.innerHTML = `<span class="badge b-ok">Strict Localhost-Only Mode (No External Domains Authorized)</span>`;
+        return;
+      }
+      box.innerHTML = publicUrlsList.map((u, idx) => `
+        <span class="chip">
+          ${u}
+          <button onclick="removePubUrlChip(${idx})" title="Remove">×</button>
+        </span>
+      `).join('');
+    }
+
+    function addPublicUrlChip() {
+      const inp = document.getElementById('new-pub-url');
+      let val = inp.value.trim().replace(/\/+$/, '');
+      if (!val) return;
+      if (!val.startsWith('http://') && !val.startsWith('https://')) val = 'https://' + val;
+      if (!publicUrlsList.includes(val)) publicUrlsList.push(val);
+      inp.value = '';
+      renderPubUrlChips();
+    }
+
+    function removePubUrlChip(idx) {
+      publicUrlsList.splice(idx, 1);
+      renderPubUrlChips();
+    }
+
+    function generateRandomMasterKey() {
+      const arr = new Uint8Array(32);
+      window.crypto.getRandomValues(arr);
+      const hex = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+      document.getElementById('cfg-api-key').value = hex;
+    }
+
+    async function loadLiveConfig() {
+      const res = await fetch('/api/dashboard/config', { headers: authHeaders() });
+      if (!res.ok) return;
+      const d = await res.json();
+      const c = d.config || {};
+
+      setSwitch('sw-autostart', c.VIREL_AUTO_START_BROWSER);
+      setSwitch('sw-headless', c.HEADLESS);
+      setSwitch('sw-urlctx', c.ENABLE_URL_CONTEXT);
+      setSwitch('sw-search', c.ENABLE_SEARCH_GROUNDING);
+      setSwitch('sw-srvtools', c.VIREL_ENABLE_SERVER_TOOLS);
+      setSwitch('sw-markdown', c.VIREL_PRESERVE_MARKDOWN);
+
+      selectSeg('seg-thinking', c.THINKING_MODE || 'high');
+      selectSeg('seg-lb', c.VIREL_LOAD_BALANCE_MODE || 'failover');
+
+      publicUrlsList = Array.isArray(c.PUBLIC_URLS_LIST) ? [...c.PUBLIC_URLS_LIST] : [];
+      renderPubUrlChips();
+
+      document.getElementById('cfg-def-model').value = c.DEFAULT_MODEL || '';
+      document.getElementById('cfg-img-model').value = c.DEFAULT_IMAGE_MODEL || '';
+      document.getElementById('cfg-tts-model').value = c.DEFAULT_SPEECH_MODEL || '';
+      document.getElementById('cfg-tts-voice').value = c.DEFAULT_SPEECH_VOICE || '';
+      document.getElementById('cfg-acc-cnt').value = c.VIREL_GOOGLE_ACCOUNTS_COUNT ?? 1;
+      document.getElementById('cfg-cooldown-hrs').value = c.VIREL_ACCOUNT_COOLDOWN_HOURS ?? 6;
+      document.getElementById('cfg-max-conc').value = c.VIREL_MAX_CONCURRENT ?? 20;
+      document.getElementById('cfg-ram-res').value = c.VIREL_MEMORY_RESERVE_MB ?? 1024;
+      document.getElementById('cfg-media-max').value = c.VIREL_MEDIA_CACHE_MAX_MB ?? 1024;
+      document.getElementById('cfg-media-offload').value = c.VIREL_MEDIA_OFFLOAD_DIR || '';
+      document.getElementById('cfg-api-key').value = c.VIREL_API_KEY || '';
+    }
+
+    async function saveLiveConfig() {
+      const payload = {
+        VIREL_AUTO_START_BROWSER: getSwitch('sw-autostart'),
+        HEADLESS: getSwitch('sw-headless'),
+        ENABLE_URL_CONTEXT: getSwitch('sw-urlctx'),
+        ENABLE_SEARCH_GROUNDING: getSwitch('sw-search'),
+        VIREL_ENABLE_SERVER_TOOLS: getSwitch('sw-srvtools'),
+        VIREL_PRESERVE_MARKDOWN: getSwitch('sw-markdown'),
+        THINKING_MODE: getSeg('seg-thinking'),
+        VIREL_LOAD_BALANCE_MODE: getSeg('seg-lb'),
+        VIREL_PUBLIC_URL: publicUrlsList.join(','),
+        DEFAULT_MODEL: document.getElementById('cfg-def-model').value.trim(),
+        DEFAULT_IMAGE_MODEL: document.getElementById('cfg-img-model').value.trim(),
+        DEFAULT_SPEECH_MODEL: document.getElementById('cfg-tts-model').value.trim(),
+        DEFAULT_SPEECH_VOICE: document.getElementById('cfg-tts-voice').value.trim(),
+        VIREL_GOOGLE_ACCOUNTS_COUNT: Number(document.getElementById('cfg-acc-cnt').value),
+        VIREL_ACCOUNT_COOLDOWN_HOURS: Number(document.getElementById('cfg-cooldown-hrs').value),
+        VIREL_MAX_CONCURRENT: Number(document.getElementById('cfg-max-conc').value),
+        VIREL_MEMORY_RESERVE_MB: Number(document.getElementById('cfg-ram-res').value),
+        VIREL_MEDIA_CACHE_MAX_MB: Number(document.getElementById('cfg-media-max').value),
+        VIREL_MEDIA_OFFLOAD_DIR: document.getElementById('cfg-media-offload').value.trim(),
+        VIREL_API_KEY: document.getElementById('cfg-api-key').value.trim()
+      };
+
+      const res = await fetch('/api/dashboard/config', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        if (payload.VIREL_API_KEY) {
+          document.getElementById('master-key-input').value = payload.VIREL_API_KEY.split(',')[0].trim();
+          localStorage.setItem('virel_api_key', document.getElementById('master-key-input').value);
+        }
+        showToast('Saved to .env and applied to live runtime!');
+        fetchOverview();
+      } else {
+        showToast('Failed saving config — check VIREL_API_KEY.');
+      }
+    }
+
+    async function exportBackup() {
+      const res = await fetch('/api/dashboard/backup/export', { headers: authHeaders() });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `virel_backup_${Date.now()}.json`;
+      a.click();
+    }
+
+    // ==================== 5. LIVE LOGS & BLACKBOX INCIDENTS ====================
+    function connectLogsWs() {
+      if (logsWs && logsWs.readyState === WebSocket.OPEN) return;
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const token = encodeURIComponent(getAuthKey());
+      logsWs = new WebSocket(`${proto}//${window.location.host}/ws/logs?token=${token}`);
+      const box = document.getElementById('live-log-box');
+      logsWs.onmessage = (ev) => {
+        const d = JSON.parse(ev.data);
+        if (d.type === 'history') {
+          box.innerHTML = (d.logs || []).map(l => `<div class="log-line log-${l.level}">${l.message}</div>`).join('');
+          box.scrollTop = box.scrollHeight;
+        } else if (d.type === 'log' && d.entry) {
+          const div = document.createElement('div');
+          div.className = `log-line log-${d.entry.level}`;
+          div.textContent = d.entry.message;
+          box.appendChild(div);
+          box.scrollTop = box.scrollHeight;
+        }
+      };
+    }
+
+    async function loadIncidents() {
+      const res = await fetch('/api/dashboard/incidents', { headers: authHeaders() });
+      if (!res.ok) return;
+      const d = await res.json();
+      const tbody = document.getElementById('inc-tbody');
+      const list = d.incidents || [];
+      tbody.innerHTML = list.length ? list.map(i => `
+        <tr>
+          <td><span class="badge b-warn">${i.date}</span></td>
+          <td>${i.filename}</td>
+          <td>${i.size_kb} KB</td>
+          <td><a href="${i.url}" target="_blank" style="color:var(--accent)">Screenshot</a></td>
+        </tr>
+      `).join('') : `<tr><td colspan="4">0 Blackbox error screenshots recorded</td></tr>`;
+    }
+
+    async function purgeMediaCache(clearAll = false) {
+      const res = await fetch('/api/dashboard/media/purge', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ clear_all: clearAll })
+      });
+      if (res.ok) {
+        showToast('Media cache cleaned!');
+        fetchOverview();
+      }
+    }
+
+    // ==================== 6. INTERACTIVE LIVE BROWSER MODAL ====================
+    function openBrowserModal() {
+      document.getElementById('browser-modal').classList.add('open');
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const token = encodeURIComponent(getAuthKey());
+      if (browserWs) browserWs.close();
+      browserWs = new WebSocket(`${proto}//${window.location.host}/ws/browser?token=${token}`);
+
+      const img = document.getElementById('browser-screen');
+      const urlBar = document.getElementById('browser-url-bar');
+      const tabSel = document.getElementById('browser-tab-select');
+
+      browserWs.onmessage = (ev) => {
+        const d = JSON.parse(ev.data);
+        if (d.type === 'frame') {
+          img.src = 'data:image/jpeg;base64,' + d.image;
+          remoteWidth = d.width || 1280;
+          remoteHeight = d.height || 800;
+          if (document.activeElement !== urlBar) urlBar.value = d.url || '';
+          if (Array.isArray(d.tabs)) {
+            tabSel.innerHTML = d.tabs.map(t => `<option value="${t.id}" ${t.id === d.active_tab ? 'selected' : ''}>${t.label}</option>`).join('');
+          }
+        }
+      };
+    }
+
+    function closeBrowserModal() {
+      document.getElementById('browser-modal').classList.remove('open');
+      if (browserWs) {
+        browserWs.close();
+        browserWs = null;
+      }
+    }
+
+    function sendBrowserCmd(cmd) {
+      if (browserWs && browserWs.readyState === WebSocket.OPEN) {
+        browserWs.send(JSON.stringify(cmd));
+      }
+    }
+
+    // Bind Mouse & Keyboard on Live Browser Screen
+    (function bindInteractiveBrowser() {
+      const img = document.getElementById('browser-screen');
+      const vp = document.getElementById('browser-vp');
+
+      function mapCoords(e) {
+        const rect = img.getBoundingClientRect();
+        if (!rect.width || !rect.height) return { x: 0, y: 0 };
+        const x = ((e.clientX - rect.left) / rect.width) * remoteWidth;
+        const y = ((e.clientY - rect.top) / rect.height) * remoteHeight;
+        return { x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)) };
+      }
+
+      img.addEventListener('click', (e) => {
+        vp.focus();
+        const { x, y } = mapCoords(e);
+        sendBrowserCmd({ action: 'click', x, y, button: 'left' });
+      });
+
+      img.addEventListener('dblclick', (e) => {
+        const { x, y } = mapCoords(e);
+        sendBrowserCmd({ action: 'dblclick', x, y });
+      });
+
+      img.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        sendBrowserCmd({ action: 'wheel', deltaX: e.deltaX, deltaY: e.deltaY });
+      }, { passive: false });
+
+      vp.addEventListener('keydown', (e) => {
+        if (document.activeElement === document.getElementById('browser-url-bar')) return;
+        e.preventDefault();
+        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          sendBrowserCmd({ action: 'type', text: e.key });
+        } else {
+          sendBrowserCmd({ action: 'press', key: e.key });
+        }
+      });
+    })();
+
+    function refreshAll() {
+      fetchOverview();
+      loadAnalytics(currentPeriod);
+    }
+
+    fetchOverview();
+    setInterval(fetchOverview, 3000);
+  </script>
+</body>
+</html>

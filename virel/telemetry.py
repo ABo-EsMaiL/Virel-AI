@@ -650,6 +650,7 @@ class EnvConfigManager:
         "VIREL_MAX_WAITING_TABS",
         "VIREL_TOOL_RUN_TTL_SECONDS",
         "VIREL_RATE_LIMIT",
+        "VIREL_AUTO_START_BROWSER",
         "VIREL_MEDIA_CACHE_MAX_MB",
         "VIREL_MEDIA_OFFLOAD_DIR",
     ]
@@ -706,6 +707,7 @@ class EnvConfigManager:
             "VIREL_MAX_WAITING_TABS": int(disk.get("VIREL_MAX_WAITING_TABS", browser_manager.max_waiting)),
             "VIREL_TOOL_RUN_TTL_SECONDS": int(disk.get("VIREL_TOOL_RUN_TTL_SECONDS", config.TOOL_RUN_TTL_SECONDS)),
             "VIREL_RATE_LIMIT": disk.get("VIREL_RATE_LIMIT", config.RATE_LIMIT),
+            "VIREL_AUTO_START_BROWSER": disk.get("VIREL_AUTO_START_BROWSER", os.getenv("VIREL_AUTO_START_BROWSER", "true")).lower() in ("true", "1", "yes"),
             "VIREL_MEDIA_CACHE_MAX_MB": int(disk.get("VIREL_MEDIA_CACHE_MAX_MB", os.getenv("VIREL_MEDIA_CACHE_MAX_MB", "1024"))),
             "VIREL_MEDIA_OFFLOAD_DIR": disk.get("VIREL_MEDIA_OFFLOAD_DIR", os.getenv("VIREL_MEDIA_OFFLOAD_DIR", "")),
         }

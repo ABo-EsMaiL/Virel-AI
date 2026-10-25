@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -1175,6 +1176,8 @@ class WebHookBrowserManager(BrowserPage):
         super().__init__()
         self.context_closed = False
         self.profile_dir = CHROME_PROFILE_DIR
+        self.needs_login = False
+        self.engine_running = False
 
     def _on_context_closed(self, context):
         if context is self.context:
@@ -1197,6 +1200,8 @@ class WebHookBrowserManager(BrowserPage):
             "--start-maximized",
             "--mute-audio"
         ]
+        if os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER"):
+            args.extend(["--no-sandbox", "--disable-dev-shm-usage"])
 
         try:
             self.context = await self.playwright.chromium.launch_persistent_context(
@@ -1230,22 +1235,13 @@ class WebHookBrowserManager(BrowserPage):
 
         # Check if user needs to log in
         if "accounts.google.com" in self.page.url or "welcome" in self.page.url:
-            logger.warning("=" * 65)
-            logger.warning("[ACTION REQUIRED] Google AI Studio requires Google Account login!")
-            logger.warning("Please sign into your Google account in the Chromium window.")
-            logger.warning("Waiting for login completion...")
-            logger.warning("=" * 65)
-
-            # Wait up to 3 minutes for user to sign in
-            start_wait = time.time()
-            while time.time() - start_wait < 180:
-                if self.page.is_closed() or self.is_shutting_down:
-                    break
-                ta = self.page.locator('.prompt-box-container textarea, textarea[formcontrolname="promptText"], textarea[aria-label*="prompt" i], textarea[placeholder*="Type" i]').first
-                if await ta.count() > 0 and await ta.is_visible():
-                    logger.info("Login confirmed! Prompt textarea detected.")
-                    break
-                await asyncio.sleep(2)
+            self.needs_login = True
+            self.engine_running = True
+            self.is_ready = False
+            logger.warning("[ACTION REQUIRED] Google AI Studio requires Google Account login! Open /dashboard -> Live Browser Studio (or run get_session.py) to sign in.")
+            return
+        self.needs_login = False
+        self.engine_running = True
 
         prompt_ui = self.page.locator('textarea[aria-label*="prompt" i], textarea[placeholder*="Type" i], textarea[formcontrolname="promptText"]').first
         try:
@@ -1271,6 +1267,8 @@ class WebHookBrowserManager(BrowserPage):
         logger.info("Closing browser context...")
         self.is_shutting_down = True
         self.is_ready = False
+        self.engine_running = False
+        self.needs_login = False
         try:
             if self.context:
                 await self.context.close()
