@@ -73,7 +73,9 @@ class BrowserPool:
         scope = self.current
         if scope and scope.worker and hasattr(scope.worker, "switch_account"):
             await scope.worker.switch_account(new_account)
-        if hasattr(self._owner, "switch_account"):
+            if hasattr(self._owner, "profile_dir"):
+                self._owner.profile_dir = new_account.profile_dir
+        elif hasattr(self._owner, "switch_account"):
             await self._owner.switch_account(new_account)
 
     def new_scope(self, owner="", needs_page=True):

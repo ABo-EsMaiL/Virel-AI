@@ -1081,8 +1081,6 @@ class BrowserPage:
         print(f"\n[AI STUDIO TIMING] {timing_summary} (Total Roundtrip: {t_req_total:.2f}s)\n")
 
         too_many_calls_err = None
-        if "too_many_tool_calls" in prev_text.lower() or "too many tool calls" in prev_text.lower():
-            too_many_calls_err = prev_text[:500]
 
         logger.info("=" * 65)
         logger.info(f"[BATCH REPORT] Batch Size: {case_count} cases")

@@ -2,7 +2,7 @@
 
 import json
 
-ERROR_SELECTORS = 'mat-snack-bar-container, .toast, [role="alert"], ms-chat-turn .error-message, ms-chat-turn ms-error-chunk, .rate-limit-banner, ms-upgrade-card, .upgrade-card'
+ERROR_SELECTORS = 'mat-snack-bar-container, .toast, [role="alert"], ms-chat-turn .error-message, ms-chat-turn ms-error-chunk, .rate-limit-banner, ms-upgrade-card, .upgrade-card, mat-dialog-container, .warning-message, .quota-banner'
 ERROR_PATTERN = r"permission denied|internal error|failed to generate|too_many_tool_calls|too many tool calls|quota exceeded|daily limit of requests|rate limit|reached your rate limit|reached your quota|model (?:isn.t|is not) available right now|model is currently unavailable|model is overloaded|service unavailable|something went wrong"
 
 START_ERROR_WATCH = r"""() => {
@@ -15,6 +15,7 @@ START_ERROR_WATCH = r"""() => {
         if (!el) return;
         const candidates = [el.closest(selectors), ...el.querySelectorAll(selectors)].filter(Boolean);
         for (const candidate of candidates) {
+            if (candidate.closest('.user-prompt-container, [data-turn-role="user"], .prompt-box-container, ms-text-chunk, ms-code-block, ms-code-chunk, ms-thought-chunk, pre, code, textarea')) continue;
             const text = (candidate.innerText || candidate.textContent || '').trim().slice(0, 1200);
             if (pattern.test(text)) state.error = text;
         }
@@ -82,18 +83,28 @@ FETCH_RESPONSE_STATE = '''(initialCount) => {
             let errorText = "";
             const watch = window.__virelGenerationErrors;
             const pattern = new RegExp(__PATTERN__, 'i');
-            errorText = watch ? watch.error : Array.from(document.querySelectorAll(__SELECTORS__))
-                .map(el => (el.innerText || el.textContent || '').trim()).find(text => pattern.test(text)) || '';
+            const excludedSelector = '.user-prompt-container, [data-turn-role="user"], .prompt-box-container, ms-text-chunk, ms-code-block, ms-code-chunk, ms-thought-chunk, pre, code, textarea';
+
+            const genuineErrorContainers = Array.from(document.querySelectorAll(__SELECTORS__))
+                .filter(el => !el.closest(excludedSelector));
+
+            errorText = watch ? watch.error : (genuineErrorContainers
+                .map(el => (el.innerText || el.textContent || '').trim()).find(text => pattern.test(text)) || '');
             hasError = Boolean(errorText);
 
-            const bodyTxt = (document.body.innerText || '');
-            if (bodyTxt.includes('too_many_tool_calls') || bodyTxt.includes('Too many tool calls')) {
-                hasError = true;
-                errorText = 'TOO_MANY_TOOL_CALLS: ' + bodyTxt.slice(0, 500);
-            }
-            if (!hasError && (/reached your rate limit|reached your quota for the day|daily limit of requests/i.test(bodyTxt))) {
-                hasError = true;
-                errorText = 'RATE_LIMIT: ' + bodyTxt.slice(0, 500);
+            for (const el of genuineErrorContainers) {
+                const txt = (el.innerText || el.textContent || '').trim();
+                if (!txt) continue;
+                if (/too_many_tool_calls|too many tool calls/i.test(txt)) {
+                    hasError = true;
+                    errorText = 'TOO_MANY_TOOL_CALLS: ' + txt.slice(0, 500);
+                    break;
+                }
+                if (!hasError && /reached your rate limit|reached your quota for the day|daily limit of requests|quota exceeded/i.test(txt)) {
+                    hasError = true;
+                    errorText = 'RATE_LIMIT: ' + txt.slice(0, 500);
+                    break;
+                }
             }
 
             // Count tool call chips in chat turns
