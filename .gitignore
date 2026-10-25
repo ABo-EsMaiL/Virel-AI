@@ -17,10 +17,7 @@ runtime/
 # Local development workspace; the public repository contains runtime sources.
 .agents/
 .specify/
-.github/*
-!.github/workflows
-.github/workflows/*
-!.github/workflows/pixtex.yml
+.github/
 .vscode/
 docs/
 specs/

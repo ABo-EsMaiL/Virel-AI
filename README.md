@@ -105,7 +105,12 @@ A production-grade, 58-node autonomous multi-agent business workflow built nativ
 
 <div align="center">
 
-[![Virel AI - Ofok Operations Lab](https://api.pixtex.dev/i/Cg_BYhMKkRY.png)](https://pixtex.dev?utm_source=embed&utm_medium=hosted_image)
+[![Virel AI - Ofok Operations Lab](assets/n8n_workflow.png)](assets/n8n_workflow.png)
+
+<p align="center">
+  <a href="assets/n8n_workflow.png"><b>View Full-Resolution Diagram</b></a> &nbsp;|&nbsp; 
+  <a href="examples/n8n_ofok_operations_lab.json"><b>Download Workflow JSON</b></a>
+</p>
 
 </div>
 
