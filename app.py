@@ -14,7 +14,9 @@ if __name__ == "__main__":
         os.environ["VIREL_AUTO_START_BROWSER"] = "false"
         sys.argv = [a for a in sys.argv if a not in ("--no-browser", "--dashboard-only")]
 
-    if "--open-dashboard" in sys.argv:
+    if "--no-open" in sys.argv:
+        sys.argv = [a for a in sys.argv if a != "--no-open"]
+    elif not os.getenv("HEADLESS_SERVER") and not os.path.exists("/.dockerenv"):
         sys.argv = [a for a in sys.argv if a != "--open-dashboard"]
         def _launch_browser():
             time.sleep(1.2)

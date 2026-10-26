@@ -126,18 +126,32 @@ class BrowserPage:
             raise GatewayError(503, 'AI Studio model picker is unavailable.', 'model_catalog_unavailable')
         try:
             await self._open_model_picker()
-            try:
-                featured_chip = self.page.locator(
-                    'button, [role="tab"], [role="radio"], mat-chip, .mat-mdc-chip, .filter-chip, .category-chip'
-                ).filter(has_text=re.compile(r'^\s*Featured\s*$', re.I)).first
-                if await featured_chip.count() > 0 and await featured_chip.is_visible():
-                    await featured_chip.click()
-                    await asyncio.sleep(0.2)
-            except Exception:
-                pass
-            catalog = catalog_from_rows(await self.page.evaluate(READ_MODEL_ROWS))
+            combined_rows = []
+            seen_keys = set()
+            for cat in ("All", "Images", "Audio", "Featured"):
+                try:
+                    chip = self.page.locator(
+                        'button, [role="tab"], [role="radio"], mat-chip, .mat-mdc-chip, .filter-chip, .category-chip'
+                    ).filter(has_text=re.compile(rf'^\s*{cat}\s*$', re.I)).first
+                    if await chip.count() > 0 and await chip.is_visible():
+                        await chip.click()
+                        await asyncio.sleep(0.18)
+                except Exception:
+                    pass
+                try:
+                    rows = await self.page.evaluate(READ_MODEL_ROWS)
+                    if isinstance(rows, list):
+                        for r in rows:
+                            key = r.get("id") or r.get("display_name") or str(r)
+                            if key not in seen_keys:
+                                seen_keys.add(key)
+                                combined_rows.append(r)
+                except Exception:
+                    pass
+
+            catalog = catalog_from_rows(combined_rows)
             if not any(item['status'] == 'selectable' for item in catalog.values()):
-                raise GatewayError(503, 'AI Studio returned no selectable text models.', 'model_catalog_unavailable')
+                raise GatewayError(503, 'AI Studio returned no selectable models.', 'model_catalog_unavailable')
             self.model_catalog = catalog
             self.catalog_observed_at = int(time.time())
             self.model_catalog_observed = True
@@ -1198,7 +1212,11 @@ class WebHookBrowserManager(BrowserPage):
         args = [
             "--disable-blink-features=AutomationControlled",
             "--start-maximized",
-            "--mute-audio"
+            "--mute-audio",
+            "--disable-background-timer-throttling",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-renderer-backgrounding",
+            "--disable-ipc-flooding-protection",
         ]
         if os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER"):
             args.extend(["--no-sandbox", "--disable-dev-shm-usage"])

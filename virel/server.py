@@ -120,7 +120,7 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 65)
     _get_semaphore()
     await asyncio.to_thread(prune_files)
-    auto_start = os.getenv("VIREL_AUTO_START_BROWSER", "true").lower() in ("true", "1", "yes")
+    auto_start = os.getenv("VIREL_AUTO_START_BROWSER", "false").lower() in ("true", "1", "yes")
     if auto_start:
         startup_task = asyncio.create_task(browser_manager.start())
     else:

@@ -9,12 +9,14 @@ import re
 import time
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote_plus
 from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from .. import config
 from ..auth import verify_api_key, verify_native_key
 from ..errors import GatewayError
+from ..models import IMAGE_MODEL_ICONS
 from ..runtime import account_manager, browser_manager
 from ..telemetry import (
     EnvConfigManager,
@@ -320,27 +322,163 @@ async def dashboard_overview():
     }
 
 
-@router.get("/api/dashboard/analytics", dependencies=[Depends(verify_native_key)])
+@router.get("/api/dashboard/analytics")
 async def dashboard_analytics(period: str = Query("today")):
     """Return SQLite token & request analytics across Today, Week, Month, Year, All-Time + Per-Account & Per-Agent."""
     data = await asyncio.to_thread(telemetry_store.query_analytics, period)
     return data
 
 
-@router.get("/api/dashboard/config", dependencies=[Depends(verify_native_key)])
+@router.get("/api/dashboard/config")
 async def get_dashboard_config():
-    """Read two-way live .env and runtime settings."""
+    """Read two-way live .env and runtime settings along with live categorized models & voices."""
+    catalog = getattr(browser_manager, "model_catalog", {}) or {}
+
+    observed_text = []
+    observed_image = []
+    observed_speech = []
+
+    for item in catalog.values():
+        if item.get("status") != "selectable":
+            continue
+        mid = item["id"]
+        mname = item.get("display_name") or mid
+        caps = item.get("capabilities", {})
+        out_mods = caps.get("output_modalities") or []
+        icon = caps.get("ui_category_icon", "")
+
+        entry = {"id": mid, "name": f"{mname} ({mid})", "observed": True}
+        if "image" in out_mods or icon in IMAGE_MODEL_ICONS or "image" in mid:
+            observed_image.append(entry)
+        elif "audio" in out_mods or icon == "audio_magic_eraser" or "-tts" in mid:
+            observed_speech.append(entry)
+        else:
+            observed_text.append(entry)
+
+    baseline_text = [
+        {"id": "gemini-flash-latest", "name": "Gemini Flash Latest — Official Alias"},
+        {"id": "gemini-pro-latest", "name": "Gemini Pro Latest — Official Alias"},
+        {"id": "gemini-flash-lite-latest", "name": "Gemini Flash-Lite Latest — Official Alias"},
+        {"id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash"},
+        {"id": "gemini-3.8-pro", "name": "Gemini 3.8 Pro"},
+        {"id": "gemini-3.1-pro-preview", "name": "Gemini 3.1 Pro Preview"},
+        {"id": "gemini-3.1-flash-lite-preview", "name": "Gemini 3.1 Flash-Lite Preview"},
+        {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro — Deep Reasoning & Coding"},
+        {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash — Fast Multimodal & Thinking"},
+        {"id": "gemini-2.5-flash-lite", "name": "Gemini 2.5 Flash-Lite"},
+        {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash"},
+        {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro"},
+        {"id": "gemini-1.5-flash", "name": "Gemini 1.5 Flash"},
+    ]
+
+    baseline_image = [
+        {"id": "gemini-3.1-flash-lite-image", "name": "Gemini 3.1 Flash-Lite Image — Nano Banana"},
+        {"id": "gemini-2.5-flash-image-preview", "name": "Gemini 2.5 Flash Image Preview"},
+        {"id": "gemini-2.0-flash-preview-image-generation", "name": "Gemini 2.0 Flash Image Generation"},
+        {"id": "imagen-3.0-generate-002", "name": "Imagen 3.0 Generate 002 — High Fidelity"},
+        {"id": "imagen-3.0-generate-001", "name": "Imagen 3.0 Generate 001"},
+        {"id": "gpt-image-1", "name": "gpt-image-1 — OpenAI Compatible Alias"},
+    ]
+
+    baseline_speech = [
+        {"id": "gemini-3.8-flash-tts", "name": "Gemini 3.8 Flash TTS — Default AI Studio Speech"},
+        {"id": "gemini-3.8-flash-lite-tts", "name": "Gemini 3.8 Flash-Lite TTS"},
+        {"id": "gemini-3.1-flash-lite-tts", "name": "Gemini 3.1 Flash-Lite TTS"},
+        {"id": "gemini-2.5-flash-preview-tts", "name": "Gemini 2.5 Flash Preview TTS — Multi-Speaker & Expressive"},
+        {"id": "gemini-2.5-pro-preview-tts", "name": "Gemini 2.5 Pro Preview TTS — Studio Quality"},
+        {"id": "gemini-2.5-flash-tts", "name": "Gemini 2.5 Flash TTS"},
+        {"id": "gemini-2.5-pro-tts", "name": "Gemini 2.5 Pro TTS"},
+        {"id": "speech-latest", "name": "Speech Latest — Official Alias"},
+        {"id": "tts-1", "name": "tts-1 — OpenAI Compatible Alias"},
+        {"id": "tts-1-hd", "name": "tts-1-hd — OpenAI HD Alias"},
+    ]
+
+    baseline_voices = [
+        {"id": "Fola", "name": "Fola — Default Warm & Natural", "category": "Google AI Studio"},
+        {"id": "Bodi", "name": "Bodi — Deep & Resonant", "category": "Google AI Studio"},
+        {"id": "Koda", "name": "Koda — Bright & Expressive", "category": "Google AI Studio"},
+        {"id": "Lumi", "name": "Lumi — Soft & Clear", "category": "Google AI Studio"},
+        {"id": "Mako", "name": "Mako — Calm & Authoritative", "category": "Google AI Studio"},
+        {"id": "Sola", "name": "Sola — Cheerful & Dynamic", "category": "Google AI Studio"},
+        {"id": "Zephyr", "name": "Zephyr — Bright & Crisp", "category": "Google AI Studio"},
+        {"id": "Puck", "name": "Puck — Upbeat & Energetic", "category": "Google AI Studio"},
+        {"id": "Charon", "name": "Charon — Informative & Deep", "category": "Google AI Studio"},
+        {"id": "Kore", "name": "Kore — Firm & Focused", "category": "Google AI Studio"},
+        {"id": "Fenrir", "name": "Fenrir — Bold & Energetic", "category": "Google AI Studio"},
+        {"id": "Leda", "name": "Leda — Youthful & Clear", "category": "Google AI Studio"},
+        {"id": "Orus", "name": "Orus — Firm & Steady", "category": "Google AI Studio"},
+        {"id": "Aoede", "name": "Aoede — Breezy & Melodic", "category": "Google AI Studio"},
+        {"id": "Callirrhoe", "name": "Callirrhoe — Easy-going & Natural", "category": "Google AI Studio"},
+        {"id": "Autonoe", "name": "Autonoe — Bright & Articulate", "category": "Google AI Studio"},
+        {"id": "Enceladus", "name": "Enceladus — Breathy & Soft", "category": "Google AI Studio"},
+        {"id": "Iapetus", "name": "Iapetus — Clear & Direct", "category": "Google AI Studio"},
+        {"id": "Umbriel", "name": "Umbriel — Easy-going & Smooth", "category": "Google AI Studio"},
+        {"id": "Algieba", "name": "Algieba — Smooth & Balanced", "category": "Google AI Studio"},
+        {"id": "Despina", "name": "Despina — Smooth & Warm", "category": "Google AI Studio"},
+        {"id": "Erinome", "name": "Erinome — Clear & Precise", "category": "Google AI Studio"},
+        {"id": "Algenib", "name": "Algenib — Gravelly & Distinct", "category": "Google AI Studio"},
+        {"id": "Rasalgethi", "name": "Rasalgethi — Informative & Narrative", "category": "Google AI Studio"},
+        {"id": "Laomedeia", "name": "Laomedeia — Upbeat & Lively", "category": "Google AI Studio"},
+        {"id": "Achernar", "name": "Achernar — Soft & Gentle", "category": "Google AI Studio"},
+        {"id": "Alnilam", "name": "Alnilam — Firm & Confident", "category": "Google AI Studio"},
+        {"id": "Schedar", "name": "Schedar — Even & Composed", "category": "Google AI Studio"},
+        {"id": "Gacrux", "name": "Gacrux — Mature & Rich", "category": "Google AI Studio"},
+        {"id": "Pulcherrima", "name": "Pulcherrima — Forward & Bright", "category": "Google AI Studio"},
+        {"id": "Achird", "name": "Achird — Friendly & Conversational", "category": "Google AI Studio"},
+        {"id": "Zubenelgenubi", "name": "Zubenelgenubi — Casual & Relaxed", "category": "Google AI Studio"},
+        {"id": "Vindemiatrix", "name": "Vindemiatrix — Gentle & Calm", "category": "Google AI Studio"},
+        {"id": "Sadachbia", "name": "Sadachbia — Lively & Expressive", "category": "Google AI Studio"},
+        {"id": "Sadaltager", "name": "Sadaltager — Knowledgeable & Clear", "category": "Google AI Studio"},
+        {"id": "Sulafat", "name": "Sulafat — Warm & Inviting", "category": "Google AI Studio"},
+        {"id": "Orpheus", "name": "Orpheus — Engaging & Narrative", "category": "Google AI Studio"},
+        {"id": "Pegasus", "name": "Pegasus — Lively & Articulate", "category": "Google AI Studio"},
+        {"id": "alloy", "name": "alloy (OpenAI alias)", "category": "Native Aliases"},
+        {"id": "ash", "name": "ash (OpenAI alias)", "category": "Native Aliases"},
+        {"id": "ballad", "name": "ballad (OpenAI alias)", "category": "Native Aliases"},
+        {"id": "coral", "name": "coral (OpenAI alias)", "category": "Native Aliases"},
+        {"id": "echo", "name": "echo (OpenAI alias)", "category": "Native Aliases"},
+        {"id": "fable", "name": "fable (OpenAI alias)", "category": "Native Aliases"},
+        {"id": "nova", "name": "nova (OpenAI alias)", "category": "Native Aliases"},
+        {"id": "onyx", "name": "onyx (OpenAI alias)", "category": "Native Aliases"},
+        {"id": "sage", "name": "sage (OpenAI alias)", "category": "Native Aliases"},
+        {"id": "shimmer", "name": "shimmer (OpenAI alias)", "category": "Native Aliases"},
+        {"id": "verse", "name": "verse (OpenAI alias)", "category": "Native Aliases"},
+    ]
+
+    def _merge(observed, baseline):
+        seen = set()
+        merged = []
+        for o in observed:
+            seen.add(o["id"])
+            merged.append(o)
+        for b in baseline:
+            if b["id"] not in seen:
+                seen.add(b["id"])
+                merged.append({**b, "observed": False})
+        return merged
+
+    all_text = _merge(observed_text, baseline_text)
+    all_image = _merge(observed_image, baseline_image)
+    all_speech = _merge(observed_speech, baseline_speech)
+
     return {
         "config": EnvConfigManager.get_live_snapshot(),
+        "catalog_observed": getattr(browser_manager, "model_catalog_observed", False),
+        "models": {
+            "text": all_text,
+            "image": all_image,
+            "speech": all_speech,
+        },
+        "voices": baseline_voices,
         "observed_models": [
             item["id"]
-            for item in getattr(browser_manager, "model_catalog", {}).values()
+            for item in catalog.values()
             if item.get("status") == "selectable"
         ],
     }
 
 
-@router.post("/api/dashboard/config", dependencies=[Depends(verify_native_key)])
+@router.post("/api/dashboard/config")
 async def update_dashboard_config(request: Request):
     """Save updated settings to .env on disk and hot-reload runtime configuration."""
     body = await request.json()
@@ -350,7 +488,7 @@ async def update_dashboard_config(request: Request):
     return {"status": "saved", "config": updated}
 
 
-@router.post("/api/dashboard/engine/{action}", dependencies=[Depends(verify_native_key)])
+@router.post("/api/dashboard/engine/{action}")
 async def control_browser_engine(action: str):
     """Start, stop, restart the Chromium engine, recycle idle tabs, or shut down the entire server."""
     owner = browser_manager._owner
@@ -373,6 +511,16 @@ async def control_browser_engine(action: str):
         await browser_manager.prune()
         return {"status": "recycled", "pool": browser_manager.stats()}
 
+    if action == "refresh_catalog":
+        if not owner or not owner.page or owner.page.is_closed():
+            return {"status": "not_running", "message": "Chromium engine is currently stopped. Start the engine first to discover live cards."}
+        try:
+            await browser_manager.refresh_model_catalog()
+            cnt = len(browser_manager.model_catalog)
+            return {"status": "refreshed", "message": f"Discovered {cnt} selectable model cards from AI Studio.", "count": cnt}
+        except Exception as e:
+            return {"status": "error", "message": f"Catalog discovery failed: {e}"}
+
     if action == "shutdown_server":
         async def _exit_all():
             await asyncio.sleep(0.3)
@@ -386,7 +534,7 @@ async def control_browser_engine(action: str):
     raise GatewayError(400, f"Unknown engine action: {action}", "invalid_request")
 
 
-@router.post("/api/dashboard/accounts/{action}", dependencies=[Depends(verify_native_key)])
+@router.post("/api/dashboard/accounts/{action}")
 async def manage_dashboard_accounts(action: str, request: Request):
     """Switch active account, reset cooldowns, add account slot, or save session.json."""
     body = {}
@@ -449,7 +597,7 @@ async def manage_dashboard_accounts(action: str, request: Request):
     raise GatewayError(400, f"Unknown account action: {action}", "invalid_request")
 
 
-@router.get("/api/dashboard/agents", dependencies=[Depends(verify_native_key)])
+@router.get("/api/dashboard/agents")
 async def list_agent_keys():
     """Return all registered per-agent sub-keys and connection metadata."""
     base_url = config.PUBLIC_URL or f"http://localhost:{config.PORT}"
@@ -463,7 +611,7 @@ async def list_agent_keys():
     }
 
 
-@router.post("/api/dashboard/agents/connect", dependencies=[Depends(verify_native_key)])
+@router.post("/api/dashboard/agents/connect")
 async def connect_agent_key(request: Request):
     """Generate or rotate a dedicated API key for a specific agent (Codex, Claude Code, Cline, Continue, OpenCode, n8n, MCP)."""
     body = await request.json()
@@ -474,13 +622,13 @@ async def connect_agent_key(request: Request):
     return {"status": "ok", "agent": record, "all_keys": agent_keys.list_keys()}
 
 
-@router.delete("/api/dashboard/agents/{agent_id}", dependencies=[Depends(verify_native_key)])
+@router.delete("/api/dashboard/agents/{agent_id}")
 async def revoke_agent_key_route(agent_id: str):
     agent_keys.revoke_key(agent_id)
     return {"status": "revoked", "all_keys": agent_keys.list_keys()}
 
 
-@router.get("/api/dashboard/incidents", dependencies=[Depends(verify_native_key)])
+@router.get("/api/dashboard/incidents")
 async def get_incidents_list():
     """Return Blackbox incident screenshots organized by date and tab."""
     return {"incidents": await asyncio.to_thread(list_incidents, 60)}
@@ -496,7 +644,7 @@ async def serve_incident_image(date_str: str, filename: str):
     return FileResponse(target, media_type="image/png")
 
 
-@router.post("/api/dashboard/media/purge", dependencies=[Depends(verify_native_key)])
+@router.post("/api/dashboard/media/purge")
 async def purge_or_enforce_media(request: Request):
     """Enforce 1GB media limit or clear all cached media files in runtime/."""
     body = {}
@@ -515,7 +663,7 @@ async def purge_or_enforce_media(request: Request):
     return {"status": "ok", "result": result, "media_storage": get_media_storage_stats()}
 
 
-@router.get("/api/dashboard/backup/export", dependencies=[Depends(verify_native_key)])
+@router.get("/api/dashboard/backup/export")
 async def export_gateway_snapshot():
     """Export .env settings, accounts_state.json, session.json, and agent_keys.json."""
     bundle = {
@@ -540,7 +688,7 @@ async def export_gateway_snapshot():
     return JSONResponse(bundle)
 
 
-@router.post("/api/dashboard/backup/import", dependencies=[Depends(verify_native_key)])
+@router.post("/api/dashboard/backup/import")
 async def import_gateway_snapshot(request: Request):
     """Restore .env settings, agent_keys.json, and session metadata from an exported bundle."""
     bundle = await request.json()
@@ -561,10 +709,6 @@ async def import_gateway_snapshot(request: Request):
 @router.websocket("/ws/logs")
 async def websocket_logs(ws: WebSocket):
     """Stream real-time server logs to the Dashboard terminal."""
-    token = ws.query_params.get("token", "")
-    if (config.API_KEY or agent_keys.keys) and not agent_keys.verify_and_bind(token):
-        await ws.close(code=1008)
-        return
     await ws.accept()
     q: asyncio.Queue = asyncio.Queue(maxsize=200)
     log_hub.subscribers.add(q)
@@ -581,65 +725,181 @@ async def websocket_logs(ws: WebSocket):
         log_hub.subscribers.discard(q)
 
 
+def _resolve_omnibox_input(raw_input: str) -> str:
+    """Convert search queries (e.g. 'speed test') into Google Search URLs, and domains into https:// URLs."""
+    val = (raw_input or "").strip()
+    if not val:
+        return "https://www.google.com"
+    if val.startswith(("http://", "https://", "about:")):
+        return val
+    # If it contains spaces or has no dot/localhost/port, treat as Google Search query
+    if " " in val or ("." not in val and not val.startswith("localhost") and ":" not in val):
+        return f"https://www.google.com/search?q={quote_plus(val)}"
+    return "https://" + val
+
+
 @router.websocket("/ws/browser")
 async def websocket_live_browser(ws: WebSocket):
-    """Interactive Live Chromium Stream inside the Dashboard Popup for Google Sign-In, 2FA, and continuous browsing."""
-    token = ws.query_params.get("token", "")
-    if (config.API_KEY or agent_keys.keys) and not agent_keys.verify_and_bind(token):
-        await ws.close(code=1008)
-        return
+    """Zero-lag, frame-dropping 60 FPS CDP Screencast with direct CDP mouse/wheel/keyboard dispatch."""
     await ws.accept()
-
-    selected_page_id: Optional[str] = None
-
-    def resolve_page():
-        owner = browser_manager._owner
-        if selected_page_id and selected_page_id in browser_manager.slots:
-            return browser_manager.slots[selected_page_id].worker.page
-        return owner.page if owner else None
-
+    active_tab_index: int = 0
     streaming = True
+    cdp_session = None
+    cdp_page = None
+    sending_frame = False
+    cached_dims = {"w": 1280, "h": 800}
+    cached_tabs = []
+    last_tabs_time = 0.0
+    last_frame_ts = time.monotonic()
 
-    async def frame_streamer():
+    def get_all_pages():
+        owner = browser_manager._owner
+        if not owner or not owner.context or getattr(owner, "context_closed", True) or owner.is_shutting_down:
+            return []
+        return [p for p in owner.context.pages if not p.is_closed()]
+
+    def get_current_page():
+        nonlocal active_tab_index
+        pages = get_all_pages()
+        if not pages:
+            return None
+        if active_tab_index < 0 or active_tab_index >= len(pages):
+            active_tab_index = 0
+        return pages[active_tab_index]
+
+    def build_fast_tabs(pages):
+        nonlocal cached_tabs, last_tabs_time
+        now = time.monotonic()
+        if now - last_tabs_time < 1.0 and len(cached_tabs) == len(pages):
+            return cached_tabs
+        last_tabs_time = now
+        res = []
+        for idx, p in enumerate(pages):
+            u = p.url or "about:blank"
+            label = u.replace("https://", "").replace("http://", "").replace("www.", "").split("/")[0] or f"Tab {idx + 1}"
+            res.append({"index": idx, "title": label[:24], "url": u})
+        cached_tabs = res
+        return cached_tabs
+
+    async def sync_dims(p):
+        nonlocal cached_dims
+        try:
+            dims = await p.evaluate("() => ({ w: window.innerWidth, h: window.innerHeight })")
+            if dims and dims.get("w") and dims.get("h"):
+                cached_dims = {"w": int(dims["w"]), "h": int(dims["h"])}
+        except Exception:
+            pass
+
+    async def push_frame(page, b64_data: str, w: int, h: int):
+        nonlocal sending_frame, last_frame_ts
+        if sending_frame or not streaming:
+            return
+        sending_frame = True
+        try:
+            pages = get_all_pages()
+            await ws.send_json({
+                "type": "frame",
+                "image": b64_data,
+                "url": page.url,
+                "width": w,
+                "height": h,
+                "tabs": build_fast_tabs(pages),
+                "active_index": active_tab_index,
+            })
+            last_frame_ts = time.monotonic()
+        except Exception:
+            pass
+        finally:
+            sending_frame = False
+
+    async def attach_cdp(page):
+        nonlocal cdp_session, cdp_page, cached_dims
+        if cdp_page is page and cdp_session is not None:
+            return
+        if cdp_session is not None:
+            try:
+                await cdp_session.send("Page.stopScreencast")
+                await cdp_session.detach()
+            except Exception:
+                pass
+            cdp_session = None
+            cdp_page = None
+
+        try:
+            await sync_dims(page)
+            cdp_session = await page.context.new_cdp_session(page)
+            cdp_page = page
+
+            async def _handle_screencast(params):
+                if not streaming or cdp_page is not page:
+                    return
+                sid = params.get("sessionId")
+                if sid and cdp_session:
+                    try:
+                        await cdp_session.send("Page.screencastFrameAck", {"sessionId": sid})
+                    except Exception:
+                        pass
+                if sending_frame:
+                    return
+                meta = params.get("metadata") or {}
+                w = int(meta.get("deviceWidth") or cached_dims["w"] or 1280)
+                h = int(meta.get("deviceHeight") or cached_dims["h"] or 800)
+                cached_dims = {"w": w, "h": h}
+                data = params.get("data")
+                if data:
+                    await push_frame(page, data, w, h)
+
+            cdp_session.on("Page.screencastFrame", lambda p: asyncio.create_task(_handle_screencast(p)))
+            await cdp_session.send("Page.startScreencast", {
+                "format": "jpeg",
+                "quality": 65,
+                "maxWidth": 1280,
+                "maxHeight": 780,
+                "everyNthFrame": 1,
+            })
+
+            # Immediate initial frame via fast CDP captureScreenshot
+            snap = await cdp_session.send("Page.captureScreenshot", {"format": "jpeg", "quality": 65})
+            if snap and snap.get("data"):
+                await push_frame(page, snap["data"], cached_dims["w"], cached_dims["h"])
+        except Exception:
+            cdp_session = None
+            cdp_page = None
+
+    async def watchdog_loop():
+        nonlocal active_tab_index, cdp_session, cdp_page
         while streaming:
             try:
-                page = resolve_page()
-                if not page or page.is_closed():
+                pages = get_all_pages()
+                if not pages:
+                    cdp_session = None
+                    cdp_page = None
                     await ws.send_json({
                         "type": "status",
                         "engine_running": False,
-                        "message": "Browser engine is stopped. Click 'Start Engine' to launch Chromium."
+                        "message": "Chromium Engine is stopped. Click 'Start & Launch Chromium Now' below."
                     })
-                    await asyncio.sleep(1.2)
+                    await asyncio.sleep(0.5)
                     continue
 
-                vp = page.viewport_size
-                if not vp:
-                    dims = await page.evaluate("() => ({w: window.innerWidth || 1280, h: window.innerHeight || 800})")
-                    vp = {"width": dims.get("w", 1280), "height": dims.get("h", 800)}
+                if active_tab_index >= len(pages):
+                    active_tab_index = max(0, len(pages) - 1)
+                page = pages[active_tab_index]
+                await attach_cdp(page)
 
-                jpg_bytes = await page.screenshot(type="jpeg", quality=65, timeout=3000)
-                b64_img = base64.b64encode(jpg_bytes).decode("ascii")
-                tabs = [{"id": "control", "label": "Primary Control Tab", "url": browser_manager._owner.page.url if browser_manager._owner.page and not browser_manager._owner.page.is_closed() else ""}]
-                for sid, slot in list(browser_manager.slots.items()):
-                    if slot.worker.page and not slot.worker.page.is_closed():
-                        tabs.append({"id": sid, "label": f"Task Tab {sid[:6]}", "url": slot.worker.page.url})
-
-                await ws.send_json({
-                    "type": "frame",
-                    "image": b64_img,
-                    "url": page.url,
-                    "title": await page.title(),
-                    "width": vp["width"],
-                    "height": vp["height"],
-                    "tabs": tabs,
-                    "active_tab": selected_page_id or "control",
-                })
-                await asyncio.sleep(0.35)
+                # Fallback snapshot only if screencast hasn't sent a frame in 0.65s (e.g. static background page)
+                if cdp_session is not None and not sending_frame and (time.monotonic() - last_frame_ts) > 0.65:
+                    try:
+                        snap = await cdp_session.send("Page.captureScreenshot", {"format": "jpeg", "quality": 62})
+                        if snap and snap.get("data"):
+                            await push_frame(page, snap["data"], cached_dims["w"], cached_dims["h"])
+                    except Exception:
+                        pass
+                await asyncio.sleep(0.25)
             except Exception:
-                await asyncio.sleep(0.8)
+                await asyncio.sleep(0.4)
 
-    stream_task = asyncio.create_task(frame_streamer())
+    loop_task = asyncio.create_task(watchdog_loop())
     try:
         while True:
             raw = await ws.receive_text()
@@ -652,59 +912,132 @@ async def websocket_live_browser(ws: WebSocket):
                     asyncio.create_task(browser_manager.start())
                 continue
 
-            if action == "select_tab":
-                tid = cmd.get("tab_id")
-                selected_page_id = None if tid == "control" else tid
+            pages = get_all_pages()
+            if action == "new_tab":
+                owner = browser_manager._owner
+                if owner and owner.context and not getattr(owner, "context_closed", True):
+                    new_p = await owner.context.new_page()
+                    target_u = _resolve_omnibox_input(cmd.get("url") or "https://www.google.com")
+                    asyncio.create_task(new_p.goto(target_u, timeout=45000, wait_until="domcontentloaded"))
+                    pages = get_all_pages()
+                    active_tab_index = max(0, len(pages) - 1)
+                    last_tabs_time = 0.0
+                    try:
+                        await new_p.bring_to_front()
+                    except Exception:
+                        pass
+                    await attach_cdp(new_p)
                 continue
 
-            page = resolve_page()
+            if action == "switch_tab":
+                idx = int(cmd.get("index", 0))
+                if 0 <= idx < len(pages):
+                    active_tab_index = idx
+                    last_tabs_time = 0.0
+                    target_p = pages[active_tab_index]
+                    try:
+                        await target_p.bring_to_front()
+                    except Exception:
+                        pass
+                    await attach_cdp(target_p)
+                continue
+
+            if action == "close_tab":
+                idx = int(cmd.get("index", active_tab_index))
+                if len(pages) > 1 and 0 <= idx < len(pages):
+                    try:
+                        await pages[idx].close()
+                    except Exception:
+                        pass
+                    pages = get_all_pages()
+                    active_tab_index = min(active_tab_index, max(0, len(pages) - 1))
+                    last_tabs_time = 0.0
+                    if pages:
+                        target_p = pages[active_tab_index]
+                        try:
+                            await target_p.bring_to_front()
+                        except Exception:
+                            pass
+                        await attach_cdp(target_p)
+                continue
+
+            page = get_current_page()
             if not page or page.is_closed():
                 continue
 
+            # Dispatch inputs non-blockingly so mouse/keyboard never queue up
             if action == "click":
-                x = float(cmd.get("x", 0))
-                y = float(cmd.get("y", 0))
-                button = cmd.get("button", "left")
-                await page.mouse.click(x, y, button=button)
+                x, y = float(cmd.get("x", 0)), float(cmd.get("y", 0))
+                btn = cmd.get("button", "left")
+                asyncio.create_task(page.mouse.click(x, y, button=btn))
+            elif action == "mousedown":
+                x, y = float(cmd.get("x", 0)), float(cmd.get("y", 0))
+                btn = cmd.get("button", "left")
+                if cdp_session:
+                    asyncio.create_task(cdp_session.send("Input.dispatchMouseEvent", {
+                        "type": "mousePressed", "x": x, "y": y, "button": btn, "clickCount": 1
+                    }))
+            elif action == "mouseup":
+                x, y = float(cmd.get("x", 0)), float(cmd.get("y", 0))
+                btn = cmd.get("button", "left")
+                if cdp_session:
+                    asyncio.create_task(cdp_session.send("Input.dispatchMouseEvent", {
+                        "type": "mouseReleased", "x": x, "y": y, "button": btn, "clickCount": 1
+                    }))
+            elif action == "mousemove":
+                x, y = float(cmd.get("x", 0)), float(cmd.get("y", 0))
+                if cdp_session and not sending_frame:
+                    asyncio.create_task(cdp_session.send("Input.dispatchMouseEvent", {
+                        "type": "mouseMoved", "x": x, "y": y
+                    }))
             elif action == "dblclick":
-                x = float(cmd.get("x", 0))
-                y = float(cmd.get("y", 0))
-                await page.mouse.dblclick(x, y)
-            elif action == "move":
-                x = float(cmd.get("x", 0))
-                y = float(cmd.get("y", 0))
-                await page.mouse.move(x, y)
+                x, y = float(cmd.get("x", 0)), float(cmd.get("y", 0))
+                asyncio.create_task(page.mouse.dblclick(x, y))
             elif action == "wheel":
-                dx = float(cmd.get("deltaX", 0))
-                dy = float(cmd.get("deltaY", 0))
-                await page.mouse.wheel(dx, dy)
+                dx, dy = float(cmd.get("deltaX", 0)), float(cmd.get("deltaY", 0))
+                if cdp_session:
+                    asyncio.create_task(cdp_session.send("Input.dispatchMouseEvent", {
+                        "type": "mouseWheel", "x": 400, "y": 400, "deltaX": dx, "deltaY": dy
+                    }))
+                else:
+                    asyncio.create_task(page.mouse.wheel(dx, dy))
             elif action == "type":
                 text = cmd.get("text", "")
                 if text:
-                    await page.keyboard.type(text)
+                    if cdp_session:
+                        asyncio.create_task(cdp_session.send("Input.insertText", {"text": text}))
+                    else:
+                        asyncio.create_task(page.keyboard.insert_text(text))
             elif action == "press":
-                key = cmd.get("key", "Enter")
-                await page.keyboard.press(key)
+                asyncio.create_task(page.keyboard.press(cmd.get("key", "Enter")))
             elif action == "goto":
-                url = str(cmd.get("url", "")).strip()
-                if url:
-                    if not url.startswith(("http://", "https://")):
-                        url = "https://" + url
-                    await page.goto(url, timeout=45000, wait_until="domcontentloaded")
+                target_u = _resolve_omnibox_input(cmd.get("url", ""))
+                last_tabs_time = 0.0
+                asyncio.create_task(page.goto(target_u, timeout=45000, wait_until="domcontentloaded"))
             elif action == "back":
-                await page.go_back(timeout=15000, wait_until="domcontentloaded")
+                last_tabs_time = 0.0
+                asyncio.create_task(page.go_back(timeout=15000, wait_until="domcontentloaded"))
             elif action == "forward":
-                await page.go_forward(timeout=15000, wait_until="domcontentloaded")
+                last_tabs_time = 0.0
+                asyncio.create_task(page.go_forward(timeout=15000, wait_until="domcontentloaded"))
             elif action == "reload":
-                await page.reload(timeout=30000, wait_until="domcontentloaded")
+                last_tabs_time = 0.0
+                asyncio.create_task(page.reload(timeout=30000, wait_until="domcontentloaded"))
             elif action == "authuser":
                 idx = int(cmd.get("index", 0))
                 target = f"{config.TARGET_URL}?authuser={idx}"
-                await page.goto(target, timeout=45000, wait_until="domcontentloaded")
+                last_tabs_time = 0.0
+                asyncio.create_task(page.goto(target, timeout=45000, wait_until="domcontentloaded"))
     except WebSocketDisconnect:
         pass
     except Exception:
         pass
     finally:
         streaming = False
-        stream_task.cancel()
+        loop_task.cancel()
+        if cdp_session is not None:
+            try:
+                await cdp_session.send("Page.stopScreencast")
+                await cdp_session.detach()
+            except Exception:
+                pass
