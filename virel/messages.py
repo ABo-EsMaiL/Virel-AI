@@ -50,6 +50,12 @@ def extract_prompt_and_images(messages: List[ChatMessage]) -> Tuple[str, List[An
         text_parts = []
         if isinstance(content, str):
             extract_history_generated_images(content)
+            from .file_inputs import find_local_paths
+            for cand in find_local_paths(content):
+                cand_str = str(cand.resolve())
+                if not any(isinstance(x, dict) and x.get("path") == cand_str for x in sources) and len(sources) < 4:
+                    sources.append({"filename": cand.name, "path": cand_str})
+                    text_parts.append(f"[Attached {cand.name}]")
             text_parts.append(strip_large_base64(content))
             has_text |= bool(content.strip())
         elif isinstance(content, list):
@@ -90,15 +96,25 @@ def extract_prompt_and_images(messages: List[ChatMessage]) -> Tuple[str, List[An
                             raise GatewayError(400, "Audio source requires data or URL.", "invalid_file")
                     else:
                         raise GatewayError(400, "Audio source must be an object.", "invalid_file")
-                elif part.get("type") == "file":
-                    info = part.get("file")
+                elif part.get("type") in ("file", "document", "input_file", "video", "input_video", "localFile", "localVideo", "localImage", "attachment", "media"):
                     if message.role != "user":
                         raise GatewayError(400, "Files are accepted only in user messages.", "unsupported_capability")
-                    if not isinstance(info, dict):
-                        raise GatewayError(400, "A file source is required.", "invalid_file")
-                    sources.append(info)
-                    kind = "video" if is_video_source(info) else "file"
-                    text_parts.append(f"[Attached {kind} {len(sources)}]")
+                    from .file_inputs import resolve_existing_path, SUPPORTED_EXTENSIONS
+                    cand_path = part.get("path") or part.get("file_path") or part.get("filePath")
+                    if not cand_path and isinstance(part.get("file"), dict):
+                        cand_path = part["file"].get("path") or part["file"].get("file_path")
+                    if not cand_path and isinstance(part.get("video"), dict):
+                        cand_path = part["video"].get("path") or part["video"].get("file_path")
+                    cand_res = resolve_existing_path(cand_path)
+                    if cand_res and cand_res.suffix.lower() in SUPPORTED_EXTENSIONS:
+                        sources.append({"filename": cand_res.name, "path": str(cand_res.resolve())})
+                        text_parts.append(f"[Attached {cand_res.name}]")
+                        continue
+                    info = part.get("file") or part.get("video") or part
+                    if isinstance(info, dict):
+                        sources.append(info)
+                        kind = "video" if is_video_source(info) else "file"
+                        text_parts.append(f"[Attached {kind} {len(sources)}]")
                 else:
                     raise GatewayError(400, "Unsupported message content type.", "unsupported_capability")
         else:

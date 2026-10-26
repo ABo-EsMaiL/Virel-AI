@@ -34,14 +34,26 @@ def _filename(source):
 
 
 def is_video_source(source):
+    if isinstance(source, str):
+        return Path(source).suffix.lower() in FORMATS
     if not isinstance(source, dict):
         return False
     name = _filename(source)
+    if not name and ('path' in source or 'file_path' in source):
+        name = Path(source.get('path') or source.get('file_path')).name
     data = source.get('file_data')
     return (isinstance(name, str) and Path(name).suffix.lower() in FORMATS) or (isinstance(data, str) and data.startswith('data:video/'))
 
 
 def _write_source(source, path):
+    if 'path' in source or 'file_path' in source:
+        from .file_inputs import resolve_existing_path
+        src = resolve_existing_path(source.get('path') or source.get('file_path'))
+        if src and src.is_file():
+            ext = src.suffix.lower()
+            dest = path.with_suffix(ext)
+            dest.write_bytes(src.read_bytes())
+            return str(dest)
     safe_filename(_filename(source), FORMATS)
     selected = [key for key in ('file_data', 'file_url', 'file_id') if source.get(key) is not None]
     if len(selected) != 1 or set(source) - {'filename', 'file_data', 'file_url', 'file_id'}:

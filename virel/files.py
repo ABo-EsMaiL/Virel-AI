@@ -171,7 +171,16 @@ async def save_uploaded(data, filename, purpose, mime=None):
 def _write_source(source, path):
     if not isinstance(source, dict):
         raise GatewayError(400, 'PDF source must be an object.', 'invalid_file')
-    allowed = ('file_data', 'file_url', 'file_id')
+    if 'path' in source or 'file_path' in source:
+        from .file_inputs import resolve_existing_path
+        src = resolve_existing_path(source.get('path') or source.get('file_path'))
+        if src and src.is_file():
+            data = src.read_bytes()
+            if len(data) > MAX_PDF_BYTES:
+                raise GatewayError(413, f'PDF exceeds the {MAX_PDF_BYTES // (1024*1024)} MiB limit.', 'file_too_large')
+            path.write_bytes(data)
+            return str(path)
+    allowed = ('file_data', 'file_url', 'file_id', 'path', 'file_path')
     selected = [name for name in allowed if source.get(name) is not None]
     if len(selected) != 1 or any(name not in (*allowed, 'filename') for name in source):
         raise GatewayError(400, 'PDF requires exactly one supported source.', 'invalid_file')

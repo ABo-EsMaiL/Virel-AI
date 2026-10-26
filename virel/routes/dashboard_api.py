@@ -504,8 +504,19 @@ async def control_browser_engine(action: str):
 
     if action == "restart":
         await browser_manager.stop()
+        await asyncio.sleep(1.0)
         asyncio.create_task(browser_manager.start())
         return {"status": "restarting", "message": "Chromium engine is restarting with current settings."}
+
+    if action in ("server_restart", "restart_server"):
+        async def _restart_proc():
+            await asyncio.sleep(0.5)
+            try:
+                await browser_manager.stop()
+            finally:
+                os.execv(sys.executable, [sys.executable, "app.py"])
+        asyncio.create_task(_restart_proc())
+        return {"status": "restarting", "message": "Python server process is restarting..."}
 
     if action == "recycle_tabs":
         await browser_manager.prune()

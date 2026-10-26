@@ -31,8 +31,67 @@ def normalize_mime(value):
 def mime_for(name):
     return (mimetypes.guess_type(name)[0] or 'application/octet-stream').lower()
 
+def resolve_existing_path(p_str):
+    if not p_str or not isinstance(p_str, str):
+        return None
+    p = Path(p_str.strip(' \t\r\n"\''))
+    if p.is_file():
+        return p
+    try:
+        parent = p.parent
+        if parent.is_dir():
+            norm_target = p.name.replace('\u200b', '').replace('\ufeff', '').strip().lower()
+            for candidate in parent.iterdir():
+                if candidate.is_file():
+                    cand_norm = candidate.name.replace('\u200b', '').replace('\ufeff', '').strip().lower()
+                    if cand_norm == norm_target:
+                        return candidate
+    except Exception:
+        pass
+    return None
+
+LOCAL_PATH_REGEX = re.compile(r'(?:[a-zA-Z]:[\\/]|/)[^\r\n:*?"<>|]+?\.[a-zA-Z0-9]{2,8}\b')
+
+def find_local_paths(text):
+    if not isinstance(text, str):
+        return []
+    found = []
+    for match in LOCAL_PATH_REGEX.findall(text):
+        resolved = resolve_existing_path(match)
+        if resolved and resolved.suffix.lower() in SUPPORTED_EXTENSIONS:
+            found.append(resolved)
+    return found
+
 def _load(source):
-    if not isinstance(source, dict) or set(source) - {'filename','file_data','file_url','file_id'}:
+    if isinstance(source, str):
+        resolved = resolve_existing_path(source)
+        if resolved:
+            data = resolved.read_bytes()
+            name = resolved.name
+            files.safe_filename(name, SUPPORTED_EXTENSIONS)
+            mime = normalize_mime(mime_for(name))
+            return data, name, mime
+    if isinstance(source, dict) and ('path' in source or 'file_path' in source):
+        raw_p = source.get('path') or source.get('file_path')
+        resolved = resolve_existing_path(raw_p)
+        if resolved:
+            data = resolved.read_bytes()
+            name = source.get('filename') or resolved.name
+            files.safe_filename(name, SUPPORTED_EXTENSIONS)
+            mime = normalize_mime(source.get('mime_type') or mime_for(name))
+            return data, name, mime
+    if isinstance(source, dict) and str(source.get('file_url', '')).startswith('file://'):
+        p_val = unquote(urlsplit(source['file_url']).path)
+        if p_val.startswith('/') and len(p_val) > 2 and p_val[2] == ':':
+            p_val = p_val[1:]
+        resolved = resolve_existing_path(p_val)
+        if resolved:
+            data = resolved.read_bytes()
+            name = source.get('filename') or resolved.name
+            files.safe_filename(name, SUPPORTED_EXTENSIONS)
+            mime = normalize_mime(source.get('mime_type') or mime_for(name))
+            return data, name, mime
+    if not isinstance(source, dict) or set(source) - {'filename','file_data','file_url','file_id','path','file_path'}:
         raise GatewayError(400, 'Invalid file source.', 'invalid_file')
     keys = [k for k in ('file_data','file_url','file_id') if source.get(k) is not None]
     if len(keys) != 1 or not isinstance(source[keys[0]], str) or not source[keys[0]]:
