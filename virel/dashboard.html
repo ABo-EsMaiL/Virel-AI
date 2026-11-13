@@ -2876,7 +2876,11 @@ async function saveLiveConfig() {
     });
     if (res.ok) {
       showToast('Saved to .env and applied live');
-      fetchOverview();
+      if (payload.THINKING_MODE) {
+        setVal($('ov-thinking'), String(payload.THINKING_MODE).toUpperCase().replace('_', ' '));
+      }
+      await fetchOverview();
+      await fetchConfig();
     } else {
       showToast('Save failed — check the server console');
     }

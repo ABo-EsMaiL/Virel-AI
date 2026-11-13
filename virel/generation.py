@@ -13,6 +13,8 @@ from .runtime import browser_manager
 
 logger = logging.getLogger("virel.webhook")
 
+EXTRA_HIGH_SYNONYMS = ("extra_high", "extra-high", "extra high", "xhigh", "x-high", "x_high", "x high")
+
 
 async def require_ready():
     await browser_manager.recover_browser()
@@ -62,14 +64,13 @@ def validate_options(body):
         effort = nested if nested is not None else effort
 
     if effort is not None:
-        if not isinstance(effort, str) or effort.lower() not in ("low", "medium", "high", "max", "extra_high", "extra-high", "extra high", "minimal", "off"):
+        if not isinstance(effort, str) or effort.lower() not in ("low", "medium", "high", "max", "minimal", "off", *EXTRA_HIGH_SYNONYMS):
             raise GatewayError(400, "Reasoning effort must be low, medium, high, max, or extra_high.", "unsupported_parameter")
         norm_effort = effort.lower()
-        if norm_effort in ("extra_high", "extra-high", "extra high"):
+        if norm_effort in EXTRA_HIGH_SYNONYMS:
             options["reasoning_effort"] = "extra_high"
         elif norm_effort == "max":
-            model_req = body.get("model", "")
-            options["reasoning_effort"] = "extra_high" if ("hydrogen" in str(model_req).lower()) else "high"
+            options["reasoning_effort"] = "extra_high" if ("hydrogen" in str(body.get("model", "")).lower()) else "high"
         else:
             options["reasoning_effort"] = norm_effort
     elif "model" in body and "hydrogen" in str(body.get("model", "")).lower():
@@ -86,12 +87,10 @@ def validate_options(body):
 
 
 def reasoning_headers(body):
-    effort = body.get("reasoning_effort")
-    if effort is None and isinstance(body.get("reasoning"), dict):
-        effort = body["reasoning"].get("effort")
-    if effort == "max":
+    effort = body.get("reasoning_effort") or (body.get("reasoning", {}) if isinstance(body.get("reasoning"), dict) else {}).get("effort")
+    if effort in ("max", *EXTRA_HIGH_SYNONYMS) or (isinstance(effort, str) and effort.lower() in ("max", *EXTRA_HIGH_SYNONYMS)):
         applied = "extra_high" if "hydrogen" in str(body.get("model", "")).lower() else "high"
-        return {"X-Virel-Reasoning-Requested": "max", "X-Virel-Reasoning-Applied": applied}
+        return {"X-Virel-Reasoning-Requested": str(effort), "X-Virel-Reasoning-Applied": applied}
     return {}
 
 

@@ -322,6 +322,9 @@ async def dashboard_overview():
     }
 
 
+fetch_dashboard_overview = dashboard_overview
+
+
 @router.get("/api/dashboard/analytics")
 async def dashboard_analytics(period: str = Query("today")):
     """Return SQLite token & request analytics across Today, Week, Month, Year, All-Time + Per-Account & Per-Agent."""
@@ -485,7 +488,13 @@ async def update_dashboard_config(request: Request):
     if not isinstance(body, dict):
         raise GatewayError(400, "Expected JSON object of settings.", "invalid_request")
     updated = await asyncio.to_thread(EnvConfigManager.update_env_and_runtime, body)
-    return {"status": "saved", "config": updated}
+    browser_manager.active_thinking = config.THINKING_MODE
+    if browser_manager.page and not browser_manager.page.is_closed():
+        try:
+            await browser_manager.sync_live_settings()
+        except Exception as e:
+            logger.warning("Live sync error: %s", e)
+    return {"status": "saved", "config": updated, "active_thinking": browser_manager.active_thinking}
 
 
 @router.post("/api/dashboard/engine/{action}")
