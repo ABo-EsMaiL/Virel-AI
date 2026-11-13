@@ -163,16 +163,44 @@ async def list_models(refresh: bool = False):
         async with browser_manager.lock:
             await browser_manager.refresh_model_catalog()
     records = []
-    if browser_manager.is_ready and browser_manager.model_catalog_observed:
-        for item in browser_manager.model_catalog.values():
-            if item['status'] != 'selectable':
+    catalog = getattr(browser_manager, "model_catalog", {}) or {}
+    observed_at = getattr(browser_manager, "catalog_observed_at", 0) or int(time.time())
+    if catalog:
+        for item in catalog.values():
+            if item.get('status') != 'selectable':
                 continue
             actual = item.get('resolved_id', item['id'])
-            records.append({'id': item['id'], 'object': 'model', 'created': browser_manager.catalog_observed_at,
-                'owned_by': 'google-ai-studio-web', 'display_name': item['display_name'],
-                'capabilities': item['capabilities'], 'virel': {'source': 'ai_studio_ui',
-                    'observed_at': browser_manager.catalog_observed_at, 'generation_verified': actual in browser_manager.generated_models,
-                    'resolved_id': item.get('resolved_id')}})
+            records.append({
+                'id': item['id'],
+                'object': 'model',
+                'created': observed_at,
+                'owned_by': 'google-ai-studio-web',
+                'display_name': item.get('display_name', item['id']),
+                'capabilities': item.get('capabilities', {}),
+                'virel': {
+                    'source': 'ai_studio_ui',
+                    'observed_at': observed_at,
+                    'generation_verified': actual in browser_manager.generated_models,
+                    'resolved_id': item.get('resolved_id')
+                }
+            })
+    if not records:
+        for mid, dname in [
+            ("gemini-flash-latest", "Gemini Flash Latest"),
+            ("gemini-3.8-flash", "Gemini 3.8 Flash"),
+            ("gemini-3.5-flash-lite", "Gemini 3.5 Flash Lite"),
+            ("gemini-3.1-flash-lite-image", "Gemini 3.1 Flash Lite Image"),
+            ("gemini-3.8-flash-tts", "Gemini 3.8 Flash TTS"),
+        ]:
+            records.append({
+                'id': mid,
+                'object': 'model',
+                'created': int(time.time()),
+                'owned_by': 'google-ai-studio-web',
+                'display_name': dname,
+                'capabilities': {'input_modalities': None, 'output_modalities': ['text'], 'source': 'baseline_catalog'},
+                'virel': {'source': 'baseline', 'observed_at': 0, 'generation_verified': False, 'resolved_id': None}
+            })
     return {'object': 'list', 'data': records}
 
 

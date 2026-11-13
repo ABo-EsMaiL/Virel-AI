@@ -72,6 +72,17 @@ class BrowserPage:
         self.model_catalog = {}
         self.model_catalog_observed = False
         self.catalog_observed_at = 0
+        try:
+            from .config import RUNTIME_DIR
+            cache_file = Path(RUNTIME_DIR) / "model_catalog_cache.json"
+            if cache_file.is_file():
+                cache_content = json.loads(cache_file.read_text(encoding="utf-8"))
+                if isinstance(cache_content, dict) and cache_content.get("catalog"):
+                    self.model_catalog = cache_content["catalog"]
+                    self.catalog_observed_at = cache_content.get("observed_at", 0)
+                    self.model_catalog_observed = True
+        except Exception:
+            pass
         self.generated_models = set()
         self.model_error = "MODEL_UNAVAILABLE"
         self.active_temperature = None
@@ -155,6 +166,16 @@ class BrowserPage:
             self.model_catalog = catalog
             self.catalog_observed_at = int(time.time())
             self.model_catalog_observed = True
+            try:
+                from .config import RUNTIME_DIR
+                import json
+                cache_path = Path(RUNTIME_DIR) / "model_catalog_cache.json"
+                cache_path.write_text(json.dumps({
+                    "catalog": catalog,
+                    "observed_at": self.catalog_observed_at
+                }, indent=2, ensure_ascii=False), encoding="utf-8")
+            except Exception as _ce:
+                logger.debug("Failed to write model catalog cache: %s", _ce)
         except GatewayError:
             raise
         except Exception:
@@ -1272,6 +1293,11 @@ class WebHookBrowserManager(BrowserPage):
         logger.info("Google AI Studio web page ready!")
 
         await self.ensure_model(DEFAULT_MODEL)
+        if not self.model_catalog_observed or not self.model_catalog:
+            try:
+                await self.refresh_model_catalog()
+            except Exception as _re:
+                logger.warning("Auto catalog discovery on startup note: %s", _re)
         await self.ensure_thinking_mode()
         await disable_functions(self.page)
         await disable_structured(self.page)
