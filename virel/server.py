@@ -125,6 +125,8 @@ async def lifespan(app: FastAPI):
         startup_task = asyncio.create_task(browser_manager.start())
     else:
         logger.info("Browser engine auto-start is disabled (VIREL_AUTO_START_BROWSER=false). Start the engine from /dashboard when ready.")
+        logger.info("Running cold-boot headless catalog probe to discover AI Studio models...")
+        asyncio.create_task(browser_manager.run_headless_catalog_scan())
     cleanup = asyncio.create_task(expiry_loop())
     pool_cleanup = asyncio.create_task(browser_manager.maintenance())
     try:

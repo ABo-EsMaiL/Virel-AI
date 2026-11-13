@@ -281,6 +281,9 @@ class BrowserPool:
         self.closing = False
         await self._owner.start()
 
+    async def run_headless_catalog_scan(self):
+        return await self._owner.run_headless_catalog_scan()
+
     async def stop(self):
         async with self.condition:
             self.closing = True

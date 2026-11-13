@@ -12,6 +12,7 @@ from contextlib import aclosing
 from typing import AsyncGenerator, List, Optional, Union
 from playwright.async_api import async_playwright, BrowserContext, Page, Error as PlaywrightError
 
+from . import config
 from .config import (RUNTIME_DIR, CHROME_PROFILE_DIR, HEADLESS, DEFAULT_MODEL, THINKING_MODE, ENABLE_SEARCH_GROUNDING, ENABLE_URL_CONTEXT, TARGET_URL, TOOL_RUN_TTL_SECONDS, PRESERVE_MARKDOWN)
 from .dom import response_state_script, START_ERROR_WATCH, STOP_ERROR_WATCH
 from .function_ui import disable_functions, ensure_functions
@@ -67,6 +68,8 @@ class BrowserPage:
         self.lock = asyncio.Lock()
         self.is_ready = False
         self.is_shutting_down = False
+        self.starting = False
+        self._headless_scanning = False
         self.active_model = ""
         self.model_verified = False
         self.model_catalog = {}
@@ -78,9 +81,11 @@ class BrowserPage:
             if cache_file.is_file():
                 cache_content = json.loads(cache_file.read_text(encoding="utf-8"))
                 if isinstance(cache_content, dict) and cache_content.get("catalog"):
-                    self.model_catalog = cache_content["catalog"]
-                    self.catalog_observed_at = cache_content.get("observed_at", 0)
-                    self.model_catalog_observed = True
+                    cat = cache_content["catalog"]
+                    if any(k.startswith("gemini-") for k in cat.keys()):
+                        self.model_catalog = cat
+                        self.catalog_observed_at = cache_content.get("observed_at", 0)
+                        self.model_catalog_observed = True
         except Exception:
             pass
         self.generated_models = set()
@@ -167,13 +172,14 @@ class BrowserPage:
             self.catalog_observed_at = int(time.time())
             self.model_catalog_observed = True
             try:
-                from .config import RUNTIME_DIR
-                import json
-                cache_path = Path(RUNTIME_DIR) / "model_catalog_cache.json"
-                cache_path.write_text(json.dumps({
-                    "catalog": catalog,
-                    "observed_at": self.catalog_observed_at
-                }, indent=2, ensure_ascii=False), encoding="utf-8")
+                if any(k.startswith("gemini-") for k in catalog.keys()):
+                    from .config import RUNTIME_DIR
+                    import json
+                    cache_path = Path(RUNTIME_DIR) / "model_catalog_cache.json"
+                    cache_path.write_text(json.dumps({
+                        "catalog": catalog,
+                        "observed_at": self.catalog_observed_at
+                    }, indent=2, ensure_ascii=False), encoding="utf-8")
             except Exception as _ce:
                 logger.debug("Failed to write model catalog cache: %s", _ce)
         except GatewayError:
@@ -409,8 +415,12 @@ class BrowserPage:
         """Apply the current request, never a preceding request's override."""
         self.active_thinking = ""
         self.thinking_verified = False
-        target = effort if effort is not None else THINKING_MODE
-        if not target or not self.page or self.page.is_closed() or self.is_shutting_down:
+        if effort is None and "hydrogen" in str(getattr(self, "active_model", "")).lower():
+            target = "extra high"
+        else:
+            target = effort if effort is not None else getattr(config, "THINKING_MODE", "high")
+        norm_target = " ".join(str(target).strip().lower().replace("_", " ").replace("-", " ").split())
+        if not norm_target or not self.page or self.page.is_closed() or self.is_shutting_down:
             return
         try:
             control = self.page.locator('mat-select[aria-label*="Thinking" i]').first
@@ -418,18 +428,43 @@ class BrowserPage:
                 selected = control.locator(".mat-mdc-select-min-line").first
                 if not await selected.count():
                     selected = control
-                if (await selected.inner_text()).strip().lower() != target:
+                current_norm = " ".join((await selected.inner_text()).strip().lower().replace("_", " ").replace("-", " ").split())
+                if current_norm != norm_target:
                     await control.click()
                     options = self.page.locator('mat-option:visible')
-                    for i in range(await options.count()):
-                        if (await options.nth(i).inner_text()).strip().lower() == target:
-                            await options.nth(i).click()
-                            await options.first.wait_for(state="hidden", timeout=2000)
+                    matched = False
+                    opt_count = await options.count()
+                    for i in range(opt_count):
+                        opt = options.nth(i)
+                        opt_text = " ".join((await opt.inner_text()).strip().lower().replace("_", " ").replace("-", " ").split())
+                        if opt_text == norm_target:
+                            await opt.click()
+                            try:
+                                await options.first.wait_for(state="hidden", timeout=2000)
+                            except Exception:
+                                pass
+                            matched = True
                             break
-                    else:
-                        await self.page.keyboard.press("Escape")
-                self.active_thinking = (await selected.inner_text()).strip().lower()
-                self.thinking_verified = self.active_thinking == target
+                    if not matched:
+                        if norm_target == "extra high" and effort is None:
+                            # fallback to selecting "high"
+                            for i in range(opt_count):
+                                opt = options.nth(i)
+                                opt_text = " ".join((await opt.inner_text()).strip().lower().replace("_", " ").replace("-", " ").split())
+                                if opt_text == "high":
+                                    await opt.click()
+                                    try:
+                                        await options.first.wait_for(state="hidden", timeout=2000)
+                                    except Exception:
+                                        pass
+                                    matched = True
+                                    norm_target = "high"
+                                    break
+                        if not matched:
+                            await self.page.keyboard.press("Escape")
+                selected_norm = " ".join((await selected.inner_text()).strip().lower().replace("_", " ").replace("-", " ").split())
+                self.active_thinking = selected_norm.replace(" ", "_")
+                self.thinking_verified = (selected_norm == norm_target)
         except Exception:
             logger.warning("Thinking level could not be verified.")
         if effort is not None and not self.thinking_verified:
@@ -1213,6 +1248,8 @@ class WebHookBrowserManager(BrowserPage):
         self.profile_dir = CHROME_PROFILE_DIR
         self.needs_login = False
         self.engine_running = False
+        self.starting = False
+        self._headless_scanning = False
 
     def _on_context_closed(self, context):
         if context is self.context:
@@ -1220,90 +1257,240 @@ class WebHookBrowserManager(BrowserPage):
             self.is_ready = False
 
     async def start(self):
-        self.is_shutting_down = False
-        self.is_ready = False
-        # A restarted context must never advertise its previous UI observation.
-        self.model_catalog = {}
-        self.model_catalog_observed = False
-        self.catalog_observed_at = 0
-        prof_dir = getattr(self, "profile_dir", CHROME_PROFILE_DIR)
-        logger.info(f"Launching persistent Chromium context from: {prof_dir} (headless={HEADLESS}, start-maximized)")
-        self.playwright = await async_playwright().start()
-
-        args = [
-            "--disable-blink-features=AutomationControlled",
-            "--start-maximized",
-            "--mute-audio",
-            "--disable-background-timer-throttling",
-            "--disable-backgrounding-occluded-windows",
-            "--disable-renderer-backgrounding",
-            "--disable-ipc-flooding-protection",
-        ]
-        if os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER"):
-            args.extend(["--no-sandbox", "--disable-dev-shm-usage"])
-
+        self.starting = True
         try:
-            self.context = await self.playwright.chromium.launch_persistent_context(
-                user_data_dir=prof_dir,
-                headless=HEADLESS,
-                no_viewport=True,
-                args=args,
-                ignore_default_args=["--enable-automation"]
-            )
-        except Exception as e:
-            logger.error(f"Failed to launch browser: {e}")
-            logger.error(f"Please ensure no other Chromium process is using {CHROME_PROFILE_DIR}.")
-            raise e
-
-        self.context_closed = False
-        self.context.on("close", self._on_context_closed)
-        self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
-
-        self.attach_page_listeners()
-
-        from .runtime import account_manager
-        active_acc = account_manager.get_active_account()
-        target_url = account_manager.get_target_url(active_acc)
-        logger.info(f"Navigating to {target_url} (account: {active_acc.id} / {active_acc.label}) to ensure clean environment...")
-        try:
-            await self.page.goto(target_url, timeout=60000, wait_until="domcontentloaded")
-            await dismiss_popups(self.page)
-            await asyncio.sleep(2)
-        except Exception as e:
-            logger.warning(f"Initial page navigation warning: {e}. Page will be ready on demand.")
-
-        # Check if user needs to log in
-        if "accounts.google.com" in self.page.url or "welcome" in self.page.url:
-            self.needs_login = True
-            self.engine_running = True
+            if getattr(self, '_headless_scanning', False):
+                logger.info("Waiting for headless catalog scan to complete before starting browser engine...")
+                for _ in range(30):
+                    if not getattr(self, '_headless_scanning', False):
+                        break
+                    await asyncio.sleep(0.1)
+            self.is_shutting_down = False
             self.is_ready = False
-            logger.warning("[ACTION REQUIRED] Google AI Studio requires Google Account login! Open /dashboard -> Live Browser Studio (or run get_session.py) to sign in.")
-            return
-        self.needs_login = False
-        self.engine_running = True
+            # A restarted context must never advertise its previous UI observation.
+            self.model_catalog = {}
+            self.model_catalog_observed = False
+            self.catalog_observed_at = 0
+            prof_dir = getattr(self, "profile_dir", CHROME_PROFILE_DIR)
+            logger.info(f"Launching persistent Chromium context from: {prof_dir} (headless={HEADLESS}, start-maximized)")
+            self.playwright = await async_playwright().start()
 
-        prompt_ui = self.page.locator('textarea[aria-label*="prompt" i], textarea[placeholder*="Type" i], textarea[formcontrolname="promptText"]').first
-        try:
-            await prompt_ui.wait_for(state="visible", timeout=8000)
-            self.is_ready = True
-        except Exception:
-            self.is_ready = False
-            logger.warning("AI Studio prompt UI unavailable; authenticated requests will return 503.")
-            return
-        logger.info("Google AI Studio web page ready!")
+            args = [
+                "--disable-blink-features=AutomationControlled",
+                "--start-maximized",
+                "--mute-audio",
+                "--disable-background-timer-throttling",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-renderer-backgrounding",
+                "--disable-ipc-flooding-protection",
+            ]
+            if os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER"):
+                args.extend(["--no-sandbox", "--disable-dev-shm-usage"])
 
-        await self.ensure_model(DEFAULT_MODEL)
-        if not self.model_catalog_observed or not self.model_catalog:
             try:
-                await self.refresh_model_catalog()
-            except Exception as _re:
-                logger.warning("Auto catalog discovery on startup note: %s", _re)
-        await self.ensure_thinking_mode()
-        await disable_functions(self.page)
-        await disable_structured(self.page)
-        await self.ensure_tools(ENABLE_SEARCH_GROUNDING)
-        await self.ensure_url_context()
-        self.is_ready = self.model_catalog_observed
+                self.context = await self.playwright.chromium.launch_persistent_context(
+                    user_data_dir=prof_dir,
+                    headless=HEADLESS,
+                    no_viewport=True,
+                    args=args,
+                    ignore_default_args=["--enable-automation"]
+                )
+            except Exception as e:
+                logger.error(f"Failed to launch browser: {e}")
+                logger.error(f"Please ensure no other Chromium process is using {CHROME_PROFILE_DIR}.")
+                raise e
+
+            self.context_closed = False
+            self.context.on("close", self._on_context_closed)
+            self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
+
+            self.attach_page_listeners()
+
+            from .runtime import account_manager
+            active_acc = account_manager.get_active_account()
+            target_url = account_manager.get_target_url(active_acc)
+            logger.info(f"Navigating to {target_url} (account: {active_acc.id} / {active_acc.label}) to ensure clean environment...")
+            try:
+                await self.page.goto(target_url, timeout=60000, wait_until="domcontentloaded")
+                await dismiss_popups(self.page)
+                await asyncio.sleep(2)
+            except Exception as e:
+                logger.warning(f"Initial page navigation warning: {e}. Page will be ready on demand.")
+
+            # Check if user needs to log in
+            if "accounts.google.com" in self.page.url or "welcome" in self.page.url:
+                self.needs_login = True
+                self.engine_running = True
+                self.is_ready = False
+                logger.warning("[ACTION REQUIRED] Google AI Studio requires Google Account login! Open /dashboard -> Live Browser Studio (or run get_session.py) to sign in.")
+                return
+            self.needs_login = False
+            self.engine_running = True
+
+            prompt_ui = self.page.locator('textarea[aria-label*="prompt" i], textarea[placeholder*="Type" i], textarea[formcontrolname="promptText"]').first
+            try:
+                await prompt_ui.wait_for(state="visible", timeout=8000)
+                self.is_ready = True
+            except Exception:
+                self.is_ready = False
+                logger.warning("AI Studio prompt UI unavailable; authenticated requests will return 503.")
+                return
+            logger.info("Google AI Studio web page ready!")
+
+            await self.ensure_model(DEFAULT_MODEL)
+            if not self.model_catalog_observed or not self.model_catalog:
+                try:
+                    await self.refresh_model_catalog()
+                except Exception as _re:
+                    logger.warning("Auto catalog discovery on startup note: %s", _re)
+            await self.ensure_thinking_mode()
+            await disable_functions(self.page)
+            await disable_structured(self.page)
+            await self.ensure_tools(ENABLE_SEARCH_GROUNDING)
+            await self.ensure_url_context()
+            self.is_ready = self.model_catalog_observed
+        finally:
+            self.starting = False
+
+
+    async def run_headless_catalog_scan(self):
+        """Run a cold-boot headless Chromium probe to discover AI Studio models without launching the full engine."""
+        if self.is_ready or getattr(self, "starting", False) or getattr(self, "_headless_scanning", False):
+            logger.info("Headless catalog scan skipped: browser engine is ready, starting, or scan already active.")
+            return
+
+        self._headless_scanning = True
+        pw = None
+        context = None
+        try:
+            prof_dir = getattr(self, "profile_dir", CHROME_PROFILE_DIR)
+            logger.info("Launching headless Chromium instance from %s for cold-boot catalog scan...", prof_dir)
+            try:
+                pw = await async_playwright().start()
+                context = await pw.chromium.launch_persistent_context(
+                    prof_dir,
+                    headless=True,
+                    args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"],
+                    viewport={"width": 1280, "height": 900}
+                )
+            except Exception as e:
+                logger.info("Headless catalog scan skipped (profile locked or browser already active): %s", e)
+                return
+
+            if self.is_ready or getattr(self, "starting", False):
+                logger.info("Headless catalog scan aborted: main engine is starting or ready.")
+                return
+
+            page = context.pages[0] if context.pages else await context.new_page()
+
+            target_url = TARGET_URL
+            try:
+                from .runtime import account_manager
+                active_acc = account_manager.get_active_account()
+                if active_acc:
+                    target_url = account_manager.get_target_url(active_acc) or TARGET_URL
+            except Exception:
+                target_url = TARGET_URL
+
+            logger.info("Headless catalog scan navigating to %s (timeout 30s)...", target_url)
+            try:
+                await page.goto(target_url, timeout=30000, wait_until="domcontentloaded")
+                await dismiss_popups(page)
+            except Exception as e:
+                logger.info("Headless catalog scan navigation warning: %s", e)
+
+            if self.is_ready or getattr(self, "starting", False):
+                logger.info("Headless catalog scan aborted after navigation: main engine starting.")
+                return
+
+            # Check if login is required
+            if "accounts.google.com" in page.url or "welcome" in page.url:
+                logger.info("Headless catalog scan: AI Studio requires Google Account login; skipping scan.")
+                return
+
+            try:
+                picker_btn = page.locator(MODEL_SELECTOR).first
+                await picker_btn.wait_for(state="visible", timeout=10000)
+                await picker_btn.click()
+                dialog = page.locator(f'{MODEL_ROWS}, input[placeholder*="Search" i], [role="dialog"], mat-dialog-container, #picker').first
+                try:
+                    await dialog.wait_for(state="visible", timeout=8000)
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.info("Headless catalog scan: could not open model picker: %s", e)
+                return
+
+            if self.is_ready or getattr(self, "starting", False):
+                logger.info("Headless catalog scan aborted during model picker interaction.")
+                return
+
+            combined_rows = []
+            seen_keys = set()
+            for cat in ("All", "Images", "Audio", "Featured"):
+                if self.is_ready or getattr(self, "starting", False):
+                    logger.info("Headless catalog scan aborted during category extraction.")
+                    return
+                try:
+                    chip = page.locator(
+                        'button, [role="tab"], [role="radio"], mat-chip, .mat-mdc-chip, .filter-chip, .category-chip'
+                    ).filter(has_text=re.compile(rf'^\s*{cat}\s*$', re.I)).first
+                    if await chip.count() > 0 and await chip.is_visible():
+                        await chip.click()
+                        await asyncio.sleep(0.18)
+                except Exception:
+                    pass
+                try:
+                    rows = await page.evaluate(READ_MODEL_ROWS)
+                    if isinstance(rows, list):
+                        for r in rows:
+                            key = r.get("id") or r.get("display_name") or str(r)
+                            if key not in seen_keys:
+                                seen_keys.add(key)
+                                combined_rows.append(r)
+                except Exception:
+                    pass
+
+            if not combined_rows:
+                logger.info("Headless catalog scan: no model rows extracted.")
+                return
+
+            catalog = catalog_from_rows(combined_rows)
+            if not any(item.get("status") == "selectable" for item in catalog.values()):
+                logger.info("Headless catalog scan: extracted catalog contains no selectable models.")
+                return
+
+            self.model_catalog = catalog
+            self.catalog_observed_at = int(time.time())
+            self.model_catalog_observed = True
+            logger.info("Headless catalog scan successfully discovered %d models from AI Studio!", len(catalog))
+
+            try:
+                if any(k.startswith("gemini-") for k in catalog.keys()):
+                    cache_path = Path(RUNTIME_DIR) / "model_catalog_cache.json"
+                    cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    cache_path.write_text(json.dumps({
+                        "catalog": catalog,
+                        "observed_at": self.catalog_observed_at
+                    }, indent=2, ensure_ascii=False), encoding="utf-8")
+                    logger.info("Headless catalog scan saved catalog cache to %s", cache_path)
+            except Exception as _ce:
+                logger.debug("Failed to write model catalog cache: %s", _ce)
+
+        except Exception as e:
+            logger.info("Headless catalog scan finished with error: %s", e)
+        finally:
+            if context:
+                try:
+                    await context.close()
+                except Exception:
+                    pass
+            if pw:
+                try:
+                    await pw.stop()
+                except Exception:
+                    pass
+            self._headless_scanning = False
 
 
     async def stop(self):

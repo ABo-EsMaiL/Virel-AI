@@ -1532,7 +1532,9 @@ input[type="number"].input { font-family: var(--font-mono); }
                   <div class="seg" id="seg-thinking">
                     <button class="seg-opt" type="button" data-val="minimal" onclick="selectSeg('seg-thinking','minimal')">Minimal</button>
                     <button class="seg-opt" type="button" data-val="low" onclick="selectSeg('seg-thinking','low')">Low</button>
+                    <button class="seg-opt" type="button" data-val="medium" onclick="selectSeg('seg-thinking','medium')">Medium</button>
                     <button class="seg-opt active" type="button" data-val="high" onclick="selectSeg('seg-thinking','high')">High</button>
+                    <button class="seg-opt" type="button" data-val="extra_high" onclick="selectSeg('seg-thinking','extra_high')">Extra High</button>
                   </div>
                 </div>
                 <div class="field">
@@ -2175,7 +2177,7 @@ async function fetchOverview() {
     }
 
     setVal($('ov-model'), d.active_model || '—');
-    setVal($('ov-thinking'), String(d.active_thinking || 'high').toUpperCase());
+    setVal($('ov-thinking'), String(d.active_thinking || 'high').toUpperCase().replace('_', ' '));
     setVal($('ov-session'), d.session_file_exists ? 'SAVED' : 'NONE');
     ['ov-model', 'ov-thinking', 'ov-session'].forEach(function (id) { var el = $(id); if (el) el.title = el.textContent; });
 

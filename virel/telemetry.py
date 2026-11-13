@@ -791,7 +791,9 @@ class EnvConfigManager:
         if "DEFAULT_SPEECH_VOICE" in clean_updates and clean_updates["DEFAULT_SPEECH_VOICE"]:
             config.DEFAULT_SPEECH_VOICE = clean_updates["DEFAULT_SPEECH_VOICE"]
         if "THINKING_MODE" in clean_updates and clean_updates["THINKING_MODE"]:
-            config.THINKING_MODE = clean_updates["THINKING_MODE"].lower()
+            mode = clean_updates["THINKING_MODE"].lower().strip().replace("-", "_").replace(" ", "_")
+            if mode in ("extra_high", "high", "medium", "low", "minimal", "off"):
+                config.THINKING_MODE = mode
         if "ENABLE_URL_CONTEXT" in clean_updates:
             config.ENABLE_URL_CONTEXT = clean_updates["ENABLE_URL_CONTEXT"].lower() in ("true", "1", "yes")
         if "ENABLE_SEARCH_GROUNDING" in clean_updates:

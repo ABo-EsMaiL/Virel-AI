@@ -52,18 +52,28 @@ def validate_options(body):
     effort = body.get("reasoning_effort")
     reasoning = body.get("reasoning")
     if reasoning is not None:
-        if isinstance(reasoning, dict):
-            nested = reasoning.get("effort")
-            if effort is None and nested is not None:
-                effort = nested
-        elif isinstance(reasoning, str):
-            if effort is None:
-                effort = reasoning
+        if not isinstance(reasoning, dict):
+            raise GatewayError(400, "reasoning must be an object.", "invalid_request")
+        if set(reasoning) - {"effort", "summary"} or reasoning.get("summary") not in (None, "none", "auto", "concise", "detailed"):
+            raise GatewayError(400, "Reasoning summaries and budgets are not implemented.", "unsupported_parameter")
+        nested = reasoning.get("effort")
+        if effort is not None and nested is not None and effort != nested:
+            raise GatewayError(400, "Conflicting reasoning effort fields.", "invalid_request")
+        effort = nested if nested is not None else effort
+
     if effort is not None:
-        if isinstance(effort, str) and effort.lower() in ("low", "medium", "high", "max"):
-            options["reasoning_effort"] = "high" if effort.lower() in ("high", "max") else effort.lower()
+        if not isinstance(effort, str) or effort.lower() not in ("low", "medium", "high", "max", "extra_high", "extra-high", "extra high", "minimal", "off"):
+            raise GatewayError(400, "Reasoning effort must be low, medium, high, max, or extra_high.", "unsupported_parameter")
+        norm_effort = effort.lower()
+        if norm_effort in ("extra_high", "extra-high", "extra high"):
+            options["reasoning_effort"] = "extra_high"
+        elif norm_effort == "max":
+            model_req = body.get("model", "")
+            options["reasoning_effort"] = "extra_high" if ("hydrogen" in str(model_req).lower()) else "high"
         else:
-            options["reasoning_effort"] = "high"
+            options["reasoning_effort"] = norm_effort
+    elif "model" in body and "hydrogen" in str(body.get("model", "")).lower():
+        options["reasoning_effort"] = "extra_high"
     temperature = body.get("temperature")
     if temperature is not None:
         if isinstance(temperature, bool) or not isinstance(temperature, (int, float)) or not 0 <= temperature <= 2 or not math.isfinite(temperature):
@@ -79,7 +89,10 @@ def reasoning_headers(body):
     effort = body.get("reasoning_effort")
     if effort is None and isinstance(body.get("reasoning"), dict):
         effort = body["reasoning"].get("effort")
-    return {"X-Virel-Reasoning-Requested": "max", "X-Virel-Reasoning-Applied": "high"} if effort == "max" else {}
+    if effort == "max":
+        applied = "extra_high" if "hydrogen" in str(body.get("model", "")).lower() else "high"
+        return {"X-Virel-Reasoning-Requested": "max", "X-Virel-Reasoning-Applied": applied}
+    return {}
 
 
 def _browser_error(text):
