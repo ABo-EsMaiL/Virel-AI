@@ -143,20 +143,43 @@ class BrowserPool:
         if scope.admitted:
             raise RuntimeError("Request already owns execution admission")
         result_history, _ = result_context(scope.history)
-        continuation = bool(result_history and result_history[-1].get("role") == "tool")
+        continuation = False
+        if scope.history:
+            if scope.history[-1].get("role") == "tool":
+                continuation = True
+            elif any(s.worker.tool_run.pending for s in self.slots.values()):
+                if result_history and result_history[-1].get("role") == "tool":
+                    call_id = result_history[-1].get("tool_call_id")
+                    if any(s.worker.tool_run.pending and any(c["id"] == call_id for c in s.worker.tool_run.pending["calls"]) for s in self.slots.values()):
+                        continuation = True
         deadline = time.monotonic() + self.timeout
         await self.prune()
         async with self.condition:
             if continuation:
                 call_id = result_history[-1]["tool_call_id"]
-                slot = next((s for s in self.slots.values() if s.worker.tool_run.pending and
-                             any(c["id"] == call_id for c in s.worker.tool_run.pending["calls"])), None)
+                while True:
+                    slot = next((s for s in self.slots.values() if s.worker.tool_run.pending and
+                                 any(c["id"] == call_id for c in s.worker.tool_run.pending["calls"])), None)
+                    if slot and slot.owner == scope.owner and slot.busy and not slot.worker.page.is_closed():
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise GatewayError(409, "This function round is unavailable, foreign or already in progress.", "tool_continuation_unavailable")
+                        try:
+                            await asyncio.wait_for(self.condition.wait(), min(.2, remaining))
+                        except asyncio.TimeoutError:
+                            pass
+                        continue
+                    break
                 if slot is None or slot.owner != scope.owner or slot.busy or slot.worker.page.is_closed():
-                    raise GatewayError(409, "This function round is unavailable, foreign or already in progress.", "tool_continuation_unavailable")
-                slot.busy = True
-                slot.claim = scope.id
-                scope.slot, scope.worker = slot, slot.worker
-                scope.original_pending = slot.worker.tool_run.pending
+                    if scope.history and scope.history[-1].get("role") != "tool":
+                        continuation = False
+                    else:
+                        raise GatewayError(409, "This function round is unavailable, foreign or already in progress.", "tool_continuation_unavailable")
+                else:
+                    slot.busy = True
+                    slot.claim = scope.id
+                    scope.slot, scope.worker = slot, slot.worker
+                    scope.original_pending = slot.worker.tool_run.pending
             if not continuation and scope.needs_page and self.quarantined:
                 raise GatewayError(503, "A browser page is still being cleaned up.", "browser_cleanup_pending")
             if len(self.queue) >= self.max_queue:

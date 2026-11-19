@@ -80,14 +80,16 @@ class ToolRun:
 
     def resolve(self, history, config, owner=""):
         self.expire()
+        if not self.pending:
+            if history and history[-1].get("role") != "tool":
+                return None
+            raise GatewayError(409, "This function round is no longer available. Start a new agent execution; results were not replayed.", "tool_continuation_unavailable")
         history, context = result_context(history)
         if not history or history[-1].get("role") != "tool":
             if self.pending and owner == self.pending["owner"]:
                 self.clear()
             self.require_idle()
             return None
-        if not self.pending:
-            raise GatewayError(409, "This function round is no longer available. Start a new agent execution; results were not replayed.", "tool_continuation_unavailable")
         normalized = canonical(history, self.pending.get("routing_tools", ()))
         results, supplied = {}, {}
         expected = {c["id"]: {k: c[k] for k in ("id", "name", "arguments_hash")} for c in self.pending["calls"]}

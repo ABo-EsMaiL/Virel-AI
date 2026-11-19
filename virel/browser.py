@@ -226,13 +226,29 @@ class BrowserPage:
 
         if not is_speech_id and identifier:
             from .config import DEFAULT_MODEL
-            if (
+            clean_id = identifier
+            for pfx in ("openai-compatible/", "openai/", "anthropic/", "openrouter/", "custom/"):
+                if clean_id.startswith(pfx):
+                    clean_id = clean_id[len(pfx):]
+                    break
+            if clean_id in self.model_catalog:
+                identifier = clean_id
+            elif (
                 identifier.startswith(('gpt-', 'o1', 'o3', 'o4', 'chatgpt-', 'claude-', 'anthropic/', 'openai/', 'deepseek-', 'llama-', 'mistral-', 'qwen-', 'sol-'))
+                or clean_id.startswith(('gpt-', 'o1', 'o3', 'o4', 'chatgpt-', 'claude-', 'deepseek-', 'llama-', 'mistral-', 'qwen-', 'sol-'))
                 or identifier in ('default', 'auto')
-                or (identifier.startswith('gemini-') and identifier not in self.model_catalog)
+                or clean_id in ('default', 'auto')
+                or (clean_id.startswith('gemini-') and clean_id not in self.model_catalog)
             ):
                 logger.info('Routing external client model alias %s -> %s', identifier, DEFAULT_MODEL)
                 identifier = DEFAULT_MODEL
+            elif not self.model_catalog_observed and identifier not in self.model_catalog:
+                return {
+                    'id': identifier,
+                    'display_name': identifier,
+                    'status': 'selectable',
+                    'capabilities': {'input_modalities': None, 'output_modalities': ['text'], 'ui_category_icon': 'chat', 'source': 'unobserved_test'}
+                }
 
         item = self.model_catalog.get(identifier)
         if item is None:

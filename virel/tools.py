@@ -561,7 +561,7 @@ def _history(body, responses, origins=None, allow_media=False):
         if not isinstance(content, str):
             content = str(content) if content is not None else ""
         extract_media_from_turn(content)
-        if allow_media and isinstance(content, str):
+        if allow_media and role == "user" and isinstance(content, str):
             from .file_inputs import find_local_paths
             for cand in find_local_paths(content):
                 cand_str = str(cand.resolve())
