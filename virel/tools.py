@@ -649,6 +649,10 @@ async def function_response(body, responses, sem, owner=""):
     await require_ready()
     identifier = ("resp_" if responses else "chatcmpl-") + uuid.uuid4().hex[:16]
     now, model = int(time.time()), body.get("model", DEFAULT_MODEL)
+    for pfx in ("openai-compatible/", "openai/", "anthropic/", "openrouter/", "custom/"):
+        if model.startswith(pfx):
+            model = model[len(pfx):]
+            break
     from .runtime import browser_manager
     browser_manager.prepare(plan["history"], bool(plan["declarations"]))
     events = _function_events(plan, options, sem, owner, identifier, now, model, responses, body.get("stream", False))

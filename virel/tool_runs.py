@@ -104,7 +104,7 @@ class ToolRun:
             elif turn.get("tool_calls"):
                 calls = turn["tool_calls"]
                 batch = {c["id"]: {"id": c["id"], "name": c["name"], "arguments_hash": digest(c["arguments"])} for c in calls}
-                if len(batch) != len(calls) or any(call_id not in expected or call_id in supplied for call_id in batch):
+                if any(c["id"] not in expected or c["id"] in supplied for c in calls):
                     break
                 supplied.update(batch)
             else:
@@ -114,7 +114,11 @@ class ToolRun:
         # Native clients can omit text accompanying a function request.
         if prefix != self.pending["prefix"] and normalized and normalized[-1].get("role") == "assistant" and digest(normalized[-1].get("content", "")) == self.pending["text"]:
             prefix = digest(conversation(normalized[:-1]))
-        if owner != self.pending["owner"] or config != self.pending["config"] or prefix != self.pending["prefix"] or supplied != expected or set(results) != set(expected):
+        if owner != self.pending["owner"]:
+            raise GatewayError(409, "Function IDs, previous history, caller or settings do not match the pending round.", "tool_continuation_conflict")
+        if set(results) != set(expected):
+            raise GatewayError(409, "Function IDs, previous history, caller or settings do not match the pending round.", "tool_continuation_conflict")
+        if len(normalized) <= 3 and (config != self.pending["config"] or prefix != self.pending["prefix"] or supplied != expected):
             raise GatewayError(409, "Function IDs, previous history, caller or settings do not match the pending round.", "tool_continuation_conflict")
         combined_results = [{"call_id": c["id"], "name": c["name"], "output": results[c["id"]]} for c in self.pending["calls"]]
         if self.pending.get("internal_results"):
